@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <title>Nissan App - API Toggle, Summary & Download JSON</title>
-  <!-- Link to your Nissan CSS -->
+  <!-- Link to your Nissan CSS (adjust path if needed) -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
-  <!-- Inline CSS for centering content and styling the toggle & button -->
+  <!-- Inline CSS for centering content, styling the toggle & button -->
   <style>
     body {
       display: flex;
@@ -164,13 +164,13 @@
         envLabel.textContent = envToggle.checked ? "No Producción (UAT)" : "Producción";
       });
 
-      // Download function: creates a JSON file and triggers a download
+      // Download function: triggers download of the entire API JSON response
       downloadBtn.addEventListener('click', function() {
         if (lastResponseData) {
           const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lastResponseData, null, 2));
           const downloadAnchorNode = document.createElement('a');
           downloadAnchorNode.setAttribute("href", dataStr);
-          downloadAnchorNode.setAttribute("download", "nissan_spec.json");
+          downloadAnchorNode.setAttribute("download", "nissan_api_response.json");
           document.body.appendChild(downloadAnchorNode);
           downloadAnchorNode.click();
           downloadAnchorNode.remove();
@@ -217,24 +217,23 @@
 
           const data = await response.json();
           console.log("Response from proxy:", data);
-          lastResponseData = data; // Save for download
-
-          // Check that the necessary fields exist
-          if (!data || !data.eim || !data.modelYear || !data.price || !data.color || !data.grade || !data.publishedDate) {
-            resultEl.innerHTML = "No se recibieron resultados completos. Intenta con un modelo de año anterior o posterior.";
-            downloadBtn.style.display = "none";
-          } else {
-            // Display a summary message and show the download button
+          // Save the entire API response for download
+          lastResponseData = data;
+          downloadBtn.style.display = "block";
+          
+          // Extract and display a simplified summary if possible.
+          if (data && data.eim && data.modelYear && data.price && data.color && data.grade && data.publishedDate) {
             resultEl.innerHTML = `
               I found your EIM: ${data.eim} <br>
               Model Year: ${data.modelYear} <br>
               Color: ${data.color} <br>
               Grade: ${data.grade} <br>
               Published Date: ${data.publishedDate} <br>
-              Price: ${data.price}
+              Price: ${data.price} <br>
+              <br>Please download the JSON to check the full spec.
             `;
-            resultEl.innerHTML += "<br><br>Please download the JSON to check the spec.";
-            downloadBtn.style.display = "block";
+          } else {
+            resultEl.innerHTML = "Received API response, but some fields are missing. Please download the JSON to check the full spec.";
           }
         } catch (error) {
           console.error("Error during API call:", error);
