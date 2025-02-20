@@ -2,43 +2,93 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Demo de Proxy con Netlify Functions</title>
-  <!-- Enlaza tu archivo CSS (ajusta la ruta si tu carpeta o archivo tienen otro nombre) -->
+  <title>Nissan App - API Toggle</title>
+  <!-- Link to your CSS file (adjust path if needed) -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
+  <!-- Inline styles to center and size the application -->
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+    .container {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      width: 90%;
+      max-width: 500px;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+    }
+    form label {
+      margin-top: 10px;
+    }
+    form button {
+      margin-top: 20px;
+    }
+    .toggle {
+      margin-bottom: 15px;
+    }
+  </style>
 </head>
 <body>
-  <h1>Demo: Proxy con Netlify Functions</h1>
+  <div class="container">
+    <h1>Nissan App</h1>
 
-  <!-- Formulario para enviar datos -->
-  <form id="myForm">
-    <label for="eim">EIM:</label>
-    <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
-    <br>
-    <label for="modelYear">Model Year:</label>
-    <input type="text" id="modelYear" name="modelYear" value="2025">
-    <br>
-    <label for="languageCode">Language Code:</label>
-    <input type="text" id="languageCode" name="languageCode" value="es">
-    <br>
-    <label for="countryCode">Country Code:</label>
-    <input type="text" id="countryCode" name="countryCode" value="mx">
-    <br>
-    <button type="submit">Enviar</button>
-  </form>
+    <!-- Toggle for API Environment -->
+    <div class="toggle">
+      <label>
+        <input type="checkbox" id="envToggle">
+        Usar API no prod (UAT)
+      </label>
+    </div>
 
-  <!-- Contenedor para mostrar la respuesta -->
-  <pre id="result"></pre>
+    <!-- Formulario para enviar datos -->
+    <form id="myForm">
+      <label for="eim">EIM:</label>
+      <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
+      
+      <label for="modelYear">Model Year:</label>
+      <input type="text" id="modelYear" name="modelYear" value="2025">
+      
+      <label for="languageCode">Language Code:</label>
+      <input type="text" id="languageCode" name="languageCode" value="es">
+      
+      <label for="countryCode">Country Code:</label>
+      <input type="text" id="countryCode" name="countryCode" value="mx">
+      
+      <button type="submit">Enviar</button>
+    </form>
 
-  <!-- Script que realiza el fetch a la función de Netlify -->
+    <!-- Contenedor para mostrar la respuesta -->
+    <pre id="result"></pre>
+  </div>
+
+  <!-- Script que realiza el fetch al proxy de Netlify -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       const form = document.getElementById('myForm');
       const resultEl = document.getElementById('result');
+      const envToggle = document.getElementById('envToggle');
 
       form.addEventListener('submit', async function(event) {
-        event.preventDefault(); // Prevenir la recarga del formulario
+        event.preventDefault();
 
-        // Construir el payload con los datos del formulario
+        // Define your endpoints
+        const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
+        const nonProdEndpoint = "https://gpas-ws-eu-uat.autodatadirect.com/gpas-ws/api/v1/eim2spec";
+        // Choose endpoint based on toggle
+        const apiEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
+        console.log("Using API endpoint:", apiEndpoint);
+
+        // Build payload including the selected API endpoint
         const payload = {
           eims: [
             {
@@ -47,12 +97,11 @@
               languageCode: document.getElementById('languageCode').value,
               countryCode: document.getElementById('countryCode').value
             }
-          ]
+          ],
+          apiEndpoint: apiEndpoint
         };
 
-        console.log("Sending POST request to backend...");
-
-        // Realizar el POST a la función de Netlify
+        console.log("Sending POST request to proxy...");
         try {
           const response = await fetch('/.netlify/functions/proxy', {
             method: 'POST',
@@ -66,7 +115,13 @@
 
           const data = await response.json();
           console.log("Response from proxy:", data);
-          resultEl.textContent = JSON.stringify(data, null, 2);
+
+          // If API returns no data, suggest trying another model year
+          if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+            resultEl.textContent = "No se recibieron resultados. Prueba con un modelo de año anterior o posterior.";
+          } else {
+            resultEl.textContent = JSON.stringify(data, null, 2);
+          }
         } catch (error) {
           console.error("Error during API call:", error);
           resultEl.textContent = 'Error: ' + error.message;
