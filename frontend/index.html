@@ -1,86 +1,75 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Netlify Proxy Example</title>
+  <meta charset="UTF-8">
+  <title>Demo de Proxy con Netlify Functions</title>
 </head>
 <body>
-  <h1>Netlify Proxy Demo</h1>
+  <h1>Demo: Proxy con Netlify Functions</h1>
 
-  <!-- A simple form to collect data -->
+  <!-- Formulario para enviar datos -->
   <form id="myForm">
     <label for="eim">EIM:</label>
-    <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A" />
-
+    <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
+    <br>
     <label for="modelYear">Model Year:</label>
-    <input type="text" id="modelYear" name="modelYear" value="2025" />
-
+    <input type="text" id="modelYear" name="modelYear" value="2025">
+    <br>
     <label for="languageCode">Language Code:</label>
-    <input type="text" id="languageCode" name="languageCode" value="es" />
-
+    <input type="text" id="languageCode" name="languageCode" value="es">
+    <br>
     <label for="countryCode">Country Code:</label>
-    <input type="text" id="countryCode" name="countryCode" value="mx" />
-
-    <button type="submit">Send to Proxy</button>
+    <input type="text" id="countryCode" name="countryCode" value="mx">
+    <br>
+    <button type="submit">Enviar</button>
   </form>
 
+  <!-- Contenedor para mostrar la respuesta -->
   <pre id="result"></pre>
 
+  <!-- Script que realiza el fetch a la función de Netlify -->
   <script>
-    // Grab references to the form and result display
-    const form = document.getElementById('myForm');
-    const resultEl = document.getElementById('result');
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.getElementById('myForm');
+      const resultEl = document.getElementById('result');
 
-    // Listen for form submission
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault(); // Prevent the page from reloading
+      form.addEventListener('submit', async function(event) {
+        event.preventDefault(); // Prevenir la recarga del formulario
 
-      // Collect the form data
-      const formData = {
-        eim: document.getElementById('eim').value,
-        modelYear: document.getElementById('modelYear').value,
-        languageCode: document.getElementById('languageCode').value,
-        countryCode: document.getElementById('countryCode').value
-      };
+        // Construir el payload con los datos del formulario
+        const payload = {
+          eims: [
+            {
+              eim: document.getElementById('eim').value,
+              modelYear: document.getElementById('modelYear').value,
+              languageCode: document.getElementById('languageCode').value,
+              countryCode: document.getElementById('countryCode').value
+            }
+          ]
+        };
 
-      console.log("Form submitted.");
-      console.log("Form values:", formData);
+        console.log("Sending POST request to backend...");
 
-      // Build the payload
-      const payload = {
-        eims: [
-          {
-            eim: formData.eim,
-            modelYear: formData.modelYear,
-            languageCode: formData.languageCode,
-            countryCode: formData.countryCode
+        // Realizar el POST a la función de Netlify
+        try {
+          const response = await fetch('/.netlify/functions/proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            throw new Error('Server error: ' + response.status);
           }
-        ]
-      };
-      console.log("Payload built:", payload);
 
-      // Make the POST request to the Netlify Function
-      try {
-        console.log("Sending POST request to Netlify Function...");
-        const response = await fetch('/.netlify/functions/proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server error: ${response.status}`);
+          const data = await response.json();
+          console.log("Response from proxy:", data);
+          resultEl.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          console.error("Error during API call:", error);
+          resultEl.textContent = 'Error: ' + error.message;
         }
-
-        const data = await response.json();
-        console.log("Response from proxy:", data);
-
-        // Display the response
-        resultEl.textContent = JSON.stringify(data, null, 2);
-      } catch (error) {
-        console.error("Error during API call:", error);
-        resultEl.textContent = `Error: ${error.message}`;
-      }
+      });
     });
   </script>
 </body>
