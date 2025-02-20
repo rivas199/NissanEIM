@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Nissan App - API Toggle</title>
-  <!-- Link to your CSS file (adjust path if needed) -->
+  <title>Nissan App - API Toggle and Summary</title>
+  <!-- Link to your Nissan styles (adjust the path if needed) -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
-  <!-- Inline styles to center and size the application -->
+  <!-- Inline CSS for centering and toggle styling -->
   <style>
     body {
       display: flex;
@@ -14,14 +14,15 @@
       min-height: 100vh;
       margin: 0;
       background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
     }
     .container {
-      background-color: #fff;
+      background: #fff;
       padding: 20px;
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
       width: 90%;
-      max-width: 500px;
+      max-width: 600px;
     }
     form {
       display: flex;
@@ -32,24 +33,90 @@
     }
     form button {
       margin-top: 20px;
+      padding: 10px;
+      background-color: #2196F3;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
     }
-    .toggle {
-      margin-bottom: 15px;
+    /* Toggle switch styles */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 60px;
+      height: 34px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 26px;
+      width: 26px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+    }
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+    input:focus + .slider {
+      box-shadow: 0 0 1px #2196F3;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    .slider.round {
+      border-radius: 34px;
+    }
+    .slider.round:before {
+      border-radius: 50%;
+    }
+    /* Style for result summary */
+    .result-summary {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #e0e0e0;
+      border-radius: 4px;
+    }
+    /* Style for the toggle label */
+    .toggle-label {
+      font-weight: bold;
+      vertical-align: middle;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Nissan App</h1>
-
-    <!-- Toggle for API Environment -->
-    <div class="toggle">
-      <label>
+    
+    <!-- Slide toggle for API environment -->
+    <div style="margin-bottom: 15px;">
+      <span class="toggle-label">Ambiente: </span>
+      <span id="envLabel">Producción</span>
+      <label class="switch">
         <input type="checkbox" id="envToggle">
-        Usar API no prod (UAT)
+        <span class="slider round"></span>
       </label>
     </div>
-
+    
     <!-- Formulario para enviar datos -->
     <form id="myForm">
       <label for="eim">EIM:</label>
@@ -66,42 +133,48 @@
       
       <button type="submit">Enviar</button>
     </form>
-
+    
     <!-- Contenedor para mostrar la respuesta -->
-    <pre id="result"></pre>
+    <div id="result" class="result-summary"></div>
   </div>
 
-  <!-- Script que realiza el fetch al proxy de Netlify -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       const form = document.getElementById('myForm');
       const resultEl = document.getElementById('result');
       const envToggle = document.getElementById('envToggle');
+      const envLabel = document.getElementById('envLabel');
+
+      // Update environment label based on toggle state
+      envToggle.addEventListener('change', function() {
+        if (envToggle.checked) {
+          envLabel.textContent = "No Producción (UAT)";
+        } else {
+          envLabel.textContent = "Producción";
+        }
+      });
 
       form.addEventListener('submit', async function(event) {
         event.preventDefault();
-
-        // Define your endpoints
+        
+        // Define endpoints for production and non-production
         const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const nonProdEndpoint = "https://gpas-ws-eu-uat.autodatadirect.com/gpas-ws/api/v1/eim2spec";
-        // Choose endpoint based on toggle
-        const apiEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
-        console.log("Using API endpoint:", apiEndpoint);
-
+        const selectedEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
+        console.log("Using API endpoint:", selectedEndpoint);
+        
         // Build payload including the selected API endpoint
         const payload = {
-          eims: [
-            {
-              eim: document.getElementById('eim').value,
-              modelYear: document.getElementById('modelYear').value,
-              languageCode: document.getElementById('languageCode').value,
-              countryCode: document.getElementById('countryCode').value
-            }
-          ],
-          apiEndpoint: apiEndpoint
+          eims: [{
+            eim: document.getElementById('eim').value,
+            modelYear: document.getElementById('modelYear').value,
+            languageCode: document.getElementById('languageCode').value,
+            countryCode: document.getElementById('countryCode').value
+          }],
+          apiEndpoint: selectedEndpoint
         };
 
-        console.log("Sending POST request to proxy...");
+        console.log("Sending POST request...");
         try {
           const response = await fetch('/.netlify/functions/proxy', {
             method: 'POST',
@@ -109,18 +182,30 @@
             body: JSON.stringify(payload)
           });
 
+          if (response.status === 404 || response.status === 204) {
+            resultEl.innerHTML = "No se encontraron resultados. Intenta con un modelo de año anterior o posterior.";
+            return;
+          }
+
           if (!response.ok) {
             throw new Error('Server error: ' + response.status);
           }
 
           const data = await response.json();
           console.log("Response from proxy:", data);
-
-          // If API returns no data, suggest trying another model year
-          if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
-            resultEl.textContent = "No se recibieron resultados. Prueba con un modelo de año anterior o posterior.";
+          
+          // Check if the response data is empty or missing expected properties
+          if (!data || Object.keys(data).length === 0) {
+            resultEl.innerHTML = "No se recibieron resultados. Intenta con un modelo de año anterior o posterior.";
           } else {
-            resultEl.textContent = JSON.stringify(data, null, 2);
+            // Format the API response summary. Adjust field names as returned by your API.
+            let summary = "";
+            summary += "<strong>EIM:</strong> " + (data.eim || "N/A") + "<br>";
+            summary += "<strong>Modelo:</strong> " + (data.model || "N/A") + "<br>";
+            summary += "<strong>Año del modelo:</strong> " + (data.modelYear || "N/A") + "<br>";
+            summary += "<strong>Color:</strong> " + (data.color || "N/A") + "<br>";
+            summary += "<strong>Precio:</strong> " + (data.price || "N/A") + "<br>";
+            resultEl.innerHTML = summary;
           }
         } catch (error) {
           console.error("Error during API call:", error);
