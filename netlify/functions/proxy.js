@@ -53,18 +53,22 @@ exports.handler = async (event, context) => {
       modelYear: "N/A",
       price: "N/A",
       color: "N/A",
-      grade: "N/A"
+      grade: "N/A",
+      gradeName: "N/A",
+      publishedDate: "N/A"
     };
 
-    // Extract simplified info assuming the response has a structure similar to:
+    // Assume the response structure is similar to:
     // {
     //   "eims": [
     //     {
+    //       "publishedDate": "2025-02-04 20:38:11+00",
     //       "year": "2025",
     //       "versions": [
     //         {
     //           "retailPrice": 599900,
     //           "gradeCode": "30042-ADVANCE_2_ROW",
+    //           "name": [{"languageCode":"es","text":"Advance 2 Row"}],
     //           "equipment": [ { "typeList": ["EXTERIOR_COLOR"], "name": [{"languageCode":"es","text":"Rojo Burdeos"}] } ]
     //         }
     //       ],
@@ -77,11 +81,18 @@ exports.handler = async (event, context) => {
     if (apiData && apiData.eims && Array.isArray(apiData.eims) && apiData.eims.length > 0) {
       const outerObj = apiData.eims[0];
       simplified.modelYear = outerObj.year || "N/A";
+      simplified.publishedDate = outerObj.publishedDate || "N/A";
 
       if (outerObj.versions && Array.isArray(outerObj.versions) && outerObj.versions.length > 0) {
         const version = outerObj.versions[0];
         simplified.price = version.retailPrice || "N/A";
         simplified.grade = version.gradeCode || "N/A";
+
+        // Extract Grade Name from version.name array
+        if (version.name && Array.isArray(version.name) && version.name.length > 0) {
+          const gradeObj = version.name.find(n => n.languageCode === "es") || version.name[0];
+          simplified.gradeName = gradeObj.text || "N/A";
+        }
 
         // Extract color by looking for equipment with type "EXTERIOR_COLOR"
         if (version.equipment && Array.isArray(version.equipment)) {
@@ -102,13 +113,15 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Prepare final result including a separate "eim" field
+    // Prepare final result object with separate fields
     const result = {
-      eim: simplified.eim,         // Added separate eim field
+      eim: simplified.eim,
       modelYear: simplified.modelYear,
       price: simplified.price,
       color: simplified.color,
       grade: simplified.grade,
+      gradeName: simplified.gradeName,
+      publishedDate: simplified.publishedDate,
       message: `I found your EIM: ${simplified.eim}`
     };
 
