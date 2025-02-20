@@ -1,7 +1,7 @@
 const https = require('https');
 
 exports.handler = async (event, context) => {
-  // Importar dinámicamente node-fetch
+  // Dynamically import node-fetch
   let fetchModule;
   try {
     fetchModule = await import('node-fetch');
@@ -14,52 +14,97 @@ exports.handler = async (event, context) => {
   }
   const fetch = fetchModule.default;
 
-  // Crear un agente HTTPS que no verifique el certificado
-  const agent = new https.Agent({
-    rejectUnauthorized: false,
-  });
+  // Create an HTTPS agent to ignore certificate errors (if needed)
+  const agent = new https.Agent({ rejectUnauthorized: false });
 
   try {
-    // Parsear el body recibido
-    const body = JSON.parse(event.body);
-    console.log("Received body:", body);
+    // Parse the payload sent from the frontend
+    const payload = JSON.parse(event.body);
+    const apiEndpoint = payload.apiEndpoint; // The selected API endpoint from the frontend
+    console.log("Forwarding request to API endpoint:", apiEndpoint);
 
-    // Tu endpoint real
-    const externalApiUrl = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
-
-    // Realizar la solicitud POST a la API externa usando el agente
-    const response = await fetch(externalApiUrl, {
+    // Forward the request to the external API
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       agent: agent
     });
     console.log("Response status from external API:", response.status);
 
-    // Leer la respuesta como texto (para manejo de errores o respuestas no JSON)
+    // Get response text and try parsing as JSON
     const text = await response.text();
-    console.log("Raw response text:", text);
-
-    // Intentar parsear la respuesta como JSON
+    let apiData;
     try {
-      const data = JSON.parse(text);
-      console.log("Parsed JSON response:", data);
-      return {
-        statusCode: response.status,
-        body: JSON.stringify(data),
-      };
+      apiData = JSON.parse(text);
     } catch (jsonError) {
-      console.error("Error parsing JSON. Response text:", text);
+      console.error("Error parsing API response as JSON:", jsonError, "Raw response:", text);
       return {
-        statusCode: response.status,
-        body: JSON.stringify({ error: "Invalid JSON response", raw: text }),
+        statusCode: 500,
+        body: JSON.stringify({ error: "Invalid JSON response from external API", raw: text })
       };
     }
+
+    console.log("Full API response:", apiData);
+
+    // Initialize simplified result with default values
+    let simplified = {
+      eim: "N/A",
+      modelYear: "N/A",
+      price: "N/A",
+      color: "N/A",
+      grade: "N/A"
+    };
+
+    // Extract simplified info assuming the response has a structure like:
+    // { "eims": [ { "year": "2025", "versions": [ { "retailPrice":599900, "gradeCode":"...", "equipment": [...] } ], "eims": [ { "eim": "TCJALBWT33EJAB---A" } ] } ] }
+    if (apiData && apiData.eims && Array.isArray(apiData.eims) && apiData.eims.length > 0) {
+      const outerObj = apiData.eims[0];
+      simplified.modelYear = outerObj.year || "N/A";
+
+      if (outerObj.versions && Array.isArray(outerObj.versions) && outerObj.versions.length > 0) {
+        const version = outerObj.versions[0];
+        simplified.price = version.retailPrice || "N/A";
+        simplified.grade = version.gradeCode || "N/A";
+
+        // Attempt to extract color from version.equipment by looking for an equipment item with type "EXTERIOR_COLOR"
+        if (version.equipment && Array.isArray(version.equipment)) {
+          for (let eq of version.equipment) {
+            if (eq.typeList && Array.isArray(eq.typeList) && eq.typeList.includes("EXTERIOR_COLOR")) {
+              if (eq.name && Array.isArray(eq.name) && eq.name.length > 0) {
+                const nameObj = eq.name.find(n => n.languageCode === "es") || eq.name[0];
+                simplified.color = nameObj.text || "N/A";
+                break;
+              }
+            }
+          }
+        }
+      }
+      // Extract the EIM from a nested "eims" array (if it exists)
+      if (outerObj.eims && Array.isArray(outerObj.eims) && outerObj.eims.length > 0) {
+        simplified.eim = outerObj.eims[0].eim || "N/A";
+      }
+    }
+
+    // Prepare final result
+    const result = {
+      message: `I found your EIM: ${simplified.eim}`,
+      modelYear: simplified.modelYear,
+      price: simplified.price,
+      color: simplified.color,
+      grade: simplified.grade
+    };
+
+    return {
+      statusCode: response.status,
+      body: JSON.stringify(result)
+    };
+
   } catch (error) {
     console.error("Proxy error:", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Internal Server Error' }),
+      body: JSON.stringify({ error: 'Internal Server Error' })
     };
   }
 };
