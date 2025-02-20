@@ -1,5 +1,7 @@
+const https = require('https');
+
 exports.handler = async (event, context) => {
-  // Dynamically import node-fetch
+  // Importar dinámicamente node-fetch
   let fetchModule;
   try {
     fetchModule = await import('node-fetch');
@@ -12,27 +14,33 @@ exports.handler = async (event, context) => {
   }
   const fetch = fetchModule.default;
 
+  // Crear un agente HTTPS que no verifique el certificado
+  const agent = new https.Agent({
+    rejectUnauthorized: false,
+  });
+
   try {
-    // Parse the incoming JSON payload
+    // Parsear el body recibido
     const body = JSON.parse(event.body);
     console.log("Received body:", body);
 
-    // Your real external API endpoint
+    // Tu endpoint real
     const externalApiUrl = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
 
-    // Make the POST request to the external API
+    // Realizar la solicitud POST a la API externa usando el agente
     const response = await fetch(externalApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      agent: agent
     });
     console.log("Response status from external API:", response.status);
 
-    // Read the response as text first (in case JSON parsing fails)
+    // Leer la respuesta como texto (para manejo de errores o respuestas no JSON)
     const text = await response.text();
     console.log("Raw response text:", text);
 
-    // Try to parse the response as JSON
+    // Intentar parsear la respuesta como JSON
     try {
       const data = JSON.parse(text);
       console.log("Parsed JSON response:", data);
