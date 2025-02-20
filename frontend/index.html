@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Nissan App - API Toggle and Summary</title>
-  <!-- Link to your Nissan CSS (adjust path if needed) -->
+  <title>Nissan App - API Toggle & Summary</title>
+  <!-- Link to your Nissan CSS -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
-  <!-- Inline CSS for centering content and styling the toggle switch -->
+  <!-- Inline CSS to center content and style the toggle -->
   <style>
     body {
       display: flex;
@@ -134,7 +134,7 @@
       <button type="submit">Enviar</button>
     </form>
     
-    <!-- Contenedor para mostrar la respuesta -->
+    <!-- Contenedor para mostrar el resumen -->
     <div id="result" class="result-summary"></div>
   </div>
 
@@ -178,7 +178,6 @@
             body: JSON.stringify(payload)
           });
 
-          // If 404 or 204, suggest trying another model year
           if (response.status === 404 || response.status === 204) {
             resultEl.innerHTML = "No se encontraron resultados. Intenta con un modelo de año anterior o posterior.";
             return;
@@ -191,16 +190,17 @@
           const data = await response.json();
           console.log("Response from proxy:", data);
           
-          // Check if required fields are available in the response
-          if (!data || !data.eim || !data.modelYear || !data.price || !data.color) {
+          // Check that the necessary fields exist in the simplified API response.
+          if (!data || !data.eim || !data.modelYear || !data.price || !data.color || !data.grade) {
             resultEl.innerHTML = "No se recibieron resultados completos. Intenta con un modelo de año anterior o posterior.";
           } else {
-            // Display the summary with only the requested fields
+            // Display the summary message with the simplified response.
             const summary = `
               I found your EIM: ${data.eim} <br>
               Model Year: ${data.modelYear} <br>
-              Price: ${data.price} <br>
-              Color: ${data.color}
+              Color: ${data.color} <br>
+              Grade: ${data.grade} <br>
+              Price: ${data.price}
             `;
             resultEl.innerHTML = summary;
           }
