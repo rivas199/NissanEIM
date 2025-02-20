@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Nissan App - API Toggle and Summary</title>
-  <!-- Link to your Nissan styles (adjust the path if needed) -->
+  <title>Nissan App - Toggle API and Summary</title>
+  <!-- Link to your Nissan styles -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
-  <!-- Inline CSS for centering and toggle styling -->
+  <!-- Inline CSS for centering the content and styling the toggle switch -->
   <style>
     body {
       display: flex;
@@ -40,7 +40,7 @@
       border-radius: 4px;
       cursor: pointer;
     }
-    /* Toggle switch styles */
+    /* Slide toggle styles */
     .switch {
       position: relative;
       display: inline-block;
@@ -89,17 +89,19 @@
     .slider.round:before {
       border-radius: 50%;
     }
-    /* Style for result summary */
+    /* Style for the environment label */
+    .toggle-label {
+      font-weight: bold;
+      vertical-align: middle;
+    }
+    /* Style for the result summary */
     .result-summary {
       margin-top: 20px;
       padding: 10px;
       background-color: #e0e0e0;
       border-radius: 4px;
-    }
-    /* Style for the toggle label */
-    .toggle-label {
-      font-weight: bold;
-      vertical-align: middle;
+      text-align: center;
+      font-size: 1.1em;
     }
   </style>
 </head>
@@ -109,7 +111,7 @@
     
     <!-- Slide toggle for API environment -->
     <div style="margin-bottom: 15px;">
-      <span class="toggle-label">Ambiente: </span>
+      <span class="toggle-label">Ambiente:</span>
       <span id="envLabel">Producción</span>
       <label class="switch">
         <input type="checkbox" id="envToggle">
@@ -145,19 +147,15 @@
       const envToggle = document.getElementById('envToggle');
       const envLabel = document.getElementById('envLabel');
 
-      // Update environment label based on toggle state
+      // Update environment label when toggle changes
       envToggle.addEventListener('change', function() {
-        if (envToggle.checked) {
-          envLabel.textContent = "No Producción (UAT)";
-        } else {
-          envLabel.textContent = "Producción";
-        }
+        envLabel.textContent = envToggle.checked ? "No Producción (UAT)" : "Producción";
       });
 
       form.addEventListener('submit', async function(event) {
         event.preventDefault();
         
-        // Define endpoints for production and non-production
+        // Define API endpoints
         const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const nonProdEndpoint = "https://gpas-ws-eu-uat.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const selectedEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
@@ -182,6 +180,7 @@
             body: JSON.stringify(payload)
           });
 
+          // If a 404 or 204 is returned, suggest trying another model year
           if (response.status === 404 || response.status === 204) {
             resultEl.innerHTML = "No se encontraron resultados. Intenta con un modelo de año anterior o posterior.";
             return;
@@ -194,17 +193,19 @@
           const data = await response.json();
           console.log("Response from proxy:", data);
           
-          // Check if the response data is empty or missing expected properties
+          // Check if data is empty or missing expected fields
           if (!data || Object.keys(data).length === 0) {
             resultEl.innerHTML = "No se recibieron resultados. Intenta con un modelo de año anterior o posterior.";
           } else {
-            // Format the API response summary. Adjust field names as returned by your API.
-            let summary = "";
-            summary += "<strong>EIM:</strong> " + (data.eim || "N/A") + "<br>";
-            summary += "<strong>Modelo:</strong> " + (data.model || "N/A") + "<br>";
-            summary += "<strong>Año del modelo:</strong> " + (data.modelYear || "N/A") + "<br>";
-            summary += "<strong>Color:</strong> " + (data.color || "N/A") + "<br>";
-            summary += "<strong>Precio:</strong> " + (data.price || "N/A") + "<br>";
+            // Display a very summarized information from the API response.
+            // Adjust the property names according to your API response structure.
+            const summary = `
+              EIM: ${data.eim || "N/A"} |
+              Modelo: ${data.model || "N/A"} |
+              Año: ${data.modelYear || "N/A"} |
+              Color: ${data.color || "N/A"} |
+              Precio: ${data.price || "N/A"}
+            `;
             resultEl.innerHTML = summary;
           }
         } catch (error) {
