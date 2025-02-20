@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Nissan App - Toggle API and Summary</title>
-  <!-- Link to your Nissan styles -->
+  <title>Nissan App - API Toggle and Summary</title>
+  <!-- Link to your Nissan CSS (adjust path if needed) -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
-  <!-- Inline CSS for centering the content and styling the toggle switch -->
+  <!-- Inline CSS for centering content and styling the toggle switch -->
   <style>
     body {
       display: flex;
@@ -89,12 +89,10 @@
     .slider.round:before {
       border-radius: 50%;
     }
-    /* Style for the environment label */
     .toggle-label {
       font-weight: bold;
       vertical-align: middle;
     }
-    /* Style for the result summary */
     .result-summary {
       margin-top: 20px;
       padding: 10px;
@@ -180,7 +178,7 @@
             body: JSON.stringify(payload)
           });
 
-          // If a 404 or 204 is returned, suggest trying another model year
+          // If 404 or 204, suggest trying another model year
           if (response.status === 404 || response.status === 204) {
             resultEl.innerHTML = "No se encontraron resultados. Intenta con un modelo de año anterior o posterior.";
             return;
@@ -193,18 +191,16 @@
           const data = await response.json();
           console.log("Response from proxy:", data);
           
-          // Check if data is empty or missing expected fields
-          if (!data || Object.keys(data).length === 0) {
-            resultEl.innerHTML = "No se recibieron resultados. Intenta con un modelo de año anterior o posterior.";
+          // Check if required fields are available in the response
+          if (!data || !data.eim || !data.modelYear || !data.price || !data.color) {
+            resultEl.innerHTML = "No se recibieron resultados completos. Intenta con un modelo de año anterior o posterior.";
           } else {
-            // Display a very summarized information from the API response.
-            // Adjust the property names according to your API response structure.
+            // Display the summary with only the requested fields
             const summary = `
-              EIM: ${data.eim || "N/A"} |
-              Modelo: ${data.model || "N/A"} |
-              Año: ${data.modelYear || "N/A"} |
-              Color: ${data.color || "N/A"} |
-              Precio: ${data.price || "N/A"}
+              I found your EIM: ${data.eim} <br>
+              Model Year: ${data.modelYear} <br>
+              Price: ${data.price} <br>
+              Color: ${data.color}
             `;
             resultEl.innerHTML = summary;
           }
