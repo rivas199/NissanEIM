@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nissan Vehicle Query</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header>
+    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Nissan Logo" class="logo">
+    <h1>Nissan Vehicle Query</h1>
+  </header>
+  <main>
+    <form action="/" method="post" id="queryForm">
+      <label for="eim">EIM:</label>
+      <input type="text" id="eim" name="eim" placeholder="e.g., TDZARDYJ12TEA-----" required>
+      
+      <label for="modelYear">Model Year:</label>
+      <input type="text" id="modelYear" name="modelYear" placeholder="e.g., 2025" required>
+      
+      <label for="languageCode">Language:</label>
+      <input type="text" id="languageCode" name="languageCode" placeholder="e.g., en" required>
+      
+      <label for="countryCode">Country Code:</label>
+      <input type="text" id="countryCode" name="countryCode" placeholder="e.g., aedu" required>
+      
+      <button type="submit">Submit Query</button>
+    </form>
+    
+    {% if error_message %}
+      <div class="error">
+        <p>{{ error_message }}</p>
+      </div>
+    {% endif %}
+    
+    {% if summary %}
+      <div class="results">
+        <h2>Query Results</h2>
+        <pre>{{ summary }}</pre>
+        {% if image_url %}
+          <img src="{{ image_url }}" alt="Vehicle Image" class="vehicle-image">
+        {% endif %}
+      </div>
+    {% endif %}
+  </main>
+  <footer>
+    <p>&copy; 2025 Nissan. All rights reserved.</p>
+  </footer>
+</body>
+</html>
