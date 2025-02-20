@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nissan EIM lookup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+  <header style="text-align: center;">
+    <h1>Joaquin and Javier Solutions</h1>
+    <!-- Badge image -->
+    <img src="static/images/escudo.png" alt="Combined Badge" style="max-width: 200px; display: block; margin: 0 auto;">
+  </header>
+  
+  <main>
+    <div class="container">
+      <!-- Query Form -->
+      <form id="queryForm">
+        <label for="eim">EIMs</label>
+        <input type="text" id="eim" name="eim" placeholder="e.g., TCJALEWT33EJA---AA" required>
+        
+        <label for="modelYear">Model Year:</label>
+        <input type="text" id="modelYear" name="modelYear" placeholder="e.g., 2025" required>
+        
+        <label for="languageCode">Language:</label>
+        <input type="text" id="languageCode" name="languageCode" placeholder="e.g., en" required>
+        
+        <label for="countryCode">Country Code:</label>
+        <input type="text" id="countryCode" name="countryCode" placeholder="e.g., aedu" required>
+        
+        <button type="submit">Submit Query</button>
+      </form>
+      
+      <!-- Error message (hidden by default) -->
+      <div id="error-message" class="error" style="display: none;">
+        <p>Something went wrong. Please try again. If data is not found, consider using an older or updated model year.</p>
+      </div>
+      
+      <!-- Results section (hidden by default) -->
+      <div id="results" class="results" style="display: none;">
+        <h2>Query Results</h2>
+        <pre id="summary"></pre>
+      </div>
+      
+      <!-- Download JSON button (hidden by default) -->
+      <div id="download-json" style="display: none; margin-top: 20px;">
+        <button id="downloadBtn">Download Full JSON Response</button>
+      </div>
+      
+      <!-- Image link (hidden by default) -->
+      <div id="image-link" style="display: none; margin-top: 10px;">
+        <a id="imageUrl" href="#" target="_blank">View Vehicle Image</a>
+      </div>
+      
+    </div>
+  </main>
+  
+  <footer>
+    <p>&copy; 2025 Joaquin and Javier Solutions. All rights reserved.</p>
+  </footer>
+  
+  <script>
+    console.log("Script loaded. Waiting for form submission.");
+
+    // --- Functions for processing the API response ---
+
+    // Parse the vehicle code from the EIM string.
+    function parseVehicleFromEim(eim) {
+      const upperEim = eim.toUpperCase();
+      if (upperEim.includes("T33")) return "T33";
+      if (upperEim.includes("T32")) return "T32";
+      // Add more conditions if needed.
+      return "T33"; // Fallback
+    }
+
+    // Parse the paint code (exterior color) from the equipment list.
+    function parsePaintCode(equipmentList) {
+      if (!equipmentList) return "FAP";
+      const exterior = equipmentList.find(eq =>
+        eq.typeList && eq.typeList.includes("EXTERIOR_COLOR")
+      );
+      return exterior ? exterior.code : "FAP";
+    }
+
+    // Parse the fabric code (interior color) from the equipment list.
+    function parseFabricCode(equipmentList) {
+      if (!equipmentList) return "G";
+      const interior = equipmentList.find(eq =>
+        eq.typeList && eq.typeList.includes("INTERIOR_COLOR")
+      );
+      return interior ? interior.code : "G";
+    }
+
+    // --- Form Submission Handler ---
+    document.getElementById("queryForm").addEventListener("submit", async function(event) {
+      console.log("Form submitted.");
+      event.preventDefault(); // Prevent page reload
+      
+      // Hide previous messages
+      document.getElementById("error-message").style.display = "none";
+      document.getElementById("results").style.display = "none";
+      document.getElementById("download-json").style.display = "none";
+      document.getElementById("image-link").style.display = "none";
+      
+      // Gather form values
+      const eim = document.getElementById("eim").value.trim();
+      const modelYear = document.getElementById("modelYear").value.trim();
+      const languageCode = document.getElementById("languageCode").value.trim();
+      const countryCode = document.getElementById("countryCode").value.trim();
+      console.log("Form values:", { eim, modelYear, languageCode, countryCode });
+      
+      // Build the request payload
+      const payload = {
+        eims: [{
+          eim: eim,
+          modelYear: modelYear,
+          languageCode: languageCode,
+          countryCode: countryCode
+        }]
+      };
+      console.log("Payload built:", JSON.stringify(payload, null, 2));
+      
+      try {
+        console.log("Sending POST request to backend...");
+        const response = await fetch("http://127.0.0.1:3000/api/proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        
+        console.log("Response received. HTTP status:", response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Error response:", errorText);
+          throw new Error("APIError");
+        }
+        
+        console.log("Parsing JSON response...");
+        const data = await response.json();
+        console.log("API response data:", data);
+        
+        let summaryText = "No data found.\n\nTip: Try using an older or updated model year.";
+        
+        // If API returns data, build summary and dynamic image URL.
+        if (data.eims && data.eims.length > 0) {
+          const eimData = data.eims[0];
+          console.log("Processing EIM data:", eimData);
+          
+          const modelName = (eimData.name && eimData.name.length > 0) ? eimData.name[0].text : "Unknown Model";
+          const yearVal = eimData.year || "N/A";
+          const startingPrice = eimData.startingAtPrice || "N/A";
+          
+          let versionName = "N/A";
+          let engineType = "N/A";
+          let grade = "N/A";
+          let colors = "N/A";
+          let paintCode = "FAP";
+          let fabricCode = "G";
+          
+          if (eimData.versions && eimData.versions.length > 0) {
+            const firstVersion = eimData.versions[0];
+            if (firstVersion.name && firstVersion.name.length > 0) {
+              versionName = firstVersion.name[0].text || "N/A";
+            }
+            if (firstVersion.trimPlus && firstVersion.trimPlus.length > 0) {
+              engineType = firstVersion.trimPlus[0].text || "N/A";
+            }
+            if (firstVersion.trim && firstVersion.trim.length > 0) {
+              grade = firstVersion.trim[0].text || "N/A";
+            }
+            if (firstVersion.equipment) {
+              colors = firstVersion.equipment
+                .filter(eq => eq.typeList && eq.typeList.includes("EXTERIOR_COLOR"))
+                .map(eq => eq.name[0].text)
+                .join(", ") || "N/A";
+              paintCode = parsePaintCode(firstVersion.equipment);
+              fabricCode = parseFabricCode(firstVersion.equipment);
+            }
+          }
+          
+          summaryText = `Model: ${modelName}\n` +
+                        `Year: ${yearVal}\n` +
+                        `Version: ${versionName}\n` +
+                        `Engine Type: ${engineType}\n` +
+                        `Grade: ${grade}\n` +
+                        `Starting Price: ${startingPrice}\n` +
+                        `Available Colors: ${colors}\n\n` +
+                        `Enjoy your Nissan vehicle!\n\n` +
+                        `Tip: If you don't find data, try using an older or updated model year.`;
+          console.log("Summary built:", summaryText);
+          
+          // Build dynamic image URL using the parsed values
+          const vehicleCode = parseVehicleFromEim(eim); // e.g., "T33"
+          const imageUrl = `https://ms-prd.euw.mediaserver.heliosnissan.net/iris/iris?fabric=${fabricCode}&paint=${paintCode}&vehicle=${vehicleCode}&sa=1_T,2_DZ,4_A,5_R,6_D,7_Y,11_T,12_E,13_A,14_-,15_-,16_-,17_-,18_-,${yearVal}&width=800&client=nis&brand=nisglo&pov=E13&resp=png&bkgnd=TRANSPARENT`;
+          console.log("Image URL built:", imageUrl);
+          
+          const linkElem = document.getElementById("imageUrl");
+          linkElem.href = imageUrl;
+          linkElem.textContent = `View Vehicle Image (${vehicleCode}, ${paintCode}, ${fabricCode})`;
+          document.getElementById("image-link").style.display = "block";
+        }
+        
+        // Display the summary on the page
+        document.getElementById("summary").innerText = summaryText;
+        document.getElementById("results").style.display = "block";
+        
+        // Prepare the JSON for download
+        const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        document.getElementById("downloadBtn").onclick = function() {
+          const a = document.createElement("a");
+          a.href = jsonUrl;
+          a.download = "api_response.json";
+          a.click();
+        };
+        document.getElementById("download-json").style.display = "block";
+        
+      } catch (error) {
+        console.error("Error during API call:", error);
+        document.getElementById("error-message").innerHTML =
+          "<p>Something went wrong. Please try again. If data is not found, consider using an older or updated model year.</p>";
+        document.getElementById("error-message").style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>
