@@ -14,7 +14,7 @@ exports.handler = async (event, context) => {
   }
   const fetch = fetchModule.default;
 
-  // Create an HTTPS agent to ignore certificate errors (if needed)
+  // Create an HTTPS agent (ignores certificate errors if needed)
   const agent = new https.Agent({ rejectUnauthorized: false });
 
   try {
@@ -32,7 +32,7 @@ exports.handler = async (event, context) => {
     });
     console.log("Response status from external API:", response.status);
 
-    // Get response text and try parsing as JSON
+    // Get the raw response text and parse as JSON
     const text = await response.text();
     let apiData;
     try {
@@ -56,8 +56,24 @@ exports.handler = async (event, context) => {
       grade: "N/A"
     };
 
-    // Extract simplified info assuming the response has a structure like:
-    // { "eims": [ { "year": "2025", "versions": [ { "retailPrice":599900, "gradeCode":"...", "equipment": [...] } ], "eims": [ { "eim": "TCJALBWT33EJAB---A" } ] } ] }
+    // Extract simplified info assuming the response has a structure similar to:
+    // {
+    //   "eims": [
+    //     {
+    //       "year": "2025",
+    //       "versions": [
+    //         {
+    //           "retailPrice": 599900,
+    //           "gradeCode": "30042-ADVANCE_2_ROW",
+    //           "equipment": [ { "typeList": ["EXTERIOR_COLOR"], "name": [{"languageCode":"es","text":"Rojo Burdeos"}] } ]
+    //         }
+    //       ],
+    //       "eims": [
+    //         { "eim": "TCJALBWT33EJAB---A" }
+    //       ]
+    //     }
+    //   ]
+    // }
     if (apiData && apiData.eims && Array.isArray(apiData.eims) && apiData.eims.length > 0) {
       const outerObj = apiData.eims[0];
       simplified.modelYear = outerObj.year || "N/A";
@@ -67,7 +83,7 @@ exports.handler = async (event, context) => {
         simplified.price = version.retailPrice || "N/A";
         simplified.grade = version.gradeCode || "N/A";
 
-        // Attempt to extract color from version.equipment by looking for an equipment item with type "EXTERIOR_COLOR"
+        // Extract color by looking for equipment with type "EXTERIOR_COLOR"
         if (version.equipment && Array.isArray(version.equipment)) {
           for (let eq of version.equipment) {
             if (eq.typeList && Array.isArray(eq.typeList) && eq.typeList.includes("EXTERIOR_COLOR")) {
@@ -80,19 +96,20 @@ exports.handler = async (event, context) => {
           }
         }
       }
-      // Extract the EIM from a nested "eims" array (if it exists)
+      // Extract the EIM from a nested "eims" array if it exists
       if (outerObj.eims && Array.isArray(outerObj.eims) && outerObj.eims.length > 0) {
         simplified.eim = outerObj.eims[0].eim || "N/A";
       }
     }
 
-    // Prepare final result
+    // Prepare final result including a separate "eim" field
     const result = {
-      message: `I found your EIM: ${simplified.eim}`,
+      eim: simplified.eim,         // Added separate eim field
       modelYear: simplified.modelYear,
       price: simplified.price,
       color: simplified.color,
-      grade: simplified.grade
+      grade: simplified.grade,
+      message: `I found your EIM: ${simplified.eim}`
     };
 
     return {
