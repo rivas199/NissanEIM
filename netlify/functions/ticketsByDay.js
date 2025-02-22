@@ -24,14 +24,15 @@ exports.handler = async (event, context) => {
   const fetch = fetchModule.default;
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // Mapa de prioridad a duración (días)
+  // Mapeo de prioridad a duración fija en días:
+  // P1: 2 días, P2: 5 días, P3: 10 días.
   const durationMap = {
-    P1: 2,   // Ej: P1 abarca 2 días
-    P2: 5,   // P2 abarca 5 días
-    P3: 10   // P3 abarca 10 días
+    P1: 2,
+    P2: 5,
+    P3: 10
   };
 
-  // JQL para recuperar los tickets (ajusta según tus necesidades)
+  // JQL para recuperar tickets (ajusta según tus necesidades y nombres de campos)
   const jql = `project = PNCR
                AND issuetype in (subTaskIssueTypes())
                AND status in (Open, "In Testing", Scheduled, Blocked)
@@ -46,7 +47,7 @@ exports.handler = async (event, context) => {
                ORDER BY created DESC`;
   
   const encodedJql = encodeURIComponent(jql);
-  // Limitamos a 50 issues para no sobrecargar la función
+  // Limitar a 50 issues para reducir carga
   const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=50`;
 
   console.log("Encoded Jira URL:", jiraUrl);
@@ -60,7 +61,8 @@ exports.handler = async (event, context) => {
       },
       agent: agent
     });
-
+    
+    console.log("Jira API response status:", response.status);
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Error response from Jira:", errorText);
@@ -69,46 +71,46 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({ error: `Jira returned status ${response.status}`, details: errorText })
       };
     }
-
+    
     const data = await response.json();
-    console.log("Issues devueltos:", data.issues.length);
+    console.log("Total issues recibidos:", data.issues.length);
 
-    // 1. Recoger eventos de inicio y fin (+1 / -1) para cada prioridad
-    // Estructura: events[fecha] = { p1Delta: 0, p2Delta: 0, p3Delta: 0 }
-    // "Delta" indica el cambio en la cantidad de tickets de esa prioridad en esa fecha
-    const events = {};
-
+    // 1. Recopilar eventos de inicio y fin para cada ticket.
+    // Para cada ticket, registramos:
+    //   - Un evento +1 en el día de inicio.
+    //   - Un evento -1 en el día siguiente al final (calculado según la prioridad).
+    const events = {}; // Estructura: { "YYYY-MM-DD": { p1Delta, p2Delta, p3Delta } }
+    
     data.issues.forEach(issue => {
       const priorityName = issue.fields.priority?.name || "";
-      const startStr = issue.fields.startDate; // Ajusta al campo real donde guardas la fecha de inicio
-      if (!startStr) return; // Si no hay fecha de inicio, se ignora
-
+      const startStr = issue.fields.startDate; // Asegúrate de que este sea el campo correcto
+      if (!startStr) return; // Si no hay fecha de inicio, ignoramos el ticket
+      
       let p = "";
       if (priorityName.includes("P1")) p = "P1";
       else if (priorityName.includes("P2")) p = "P2";
       else if (priorityName.includes("P3")) p = "P3";
-      if (!p) return; // No es P1, P2 ni P3 -> se ignora
-
+      if (!p) return;
+      
       const daysToCount = durationMap[p];
       const startDate = new Date(startStr);
-
-      // El último día incluido es (startDate + daysToCount - 1)
+      // El último día que se cuenta es (startDate + daysToCount - 1)
       const endDate = new Date(startDate.getTime() + (daysToCount - 1) * 86400000);
-      // Día siguiente al fin (para el -1)
+      // Día siguiente al final para el decremento:
       const dayAfterEnd = new Date(endDate.getTime() + 86400000);
-
+      
       const startKey = startDate.toISOString().split("T")[0];
       const dayAfterEndKey = dayAfterEnd.toISOString().split("T")[0];
-
-      // Incremento (+1) en startKey
+      
+      // Incremento en el día de inicio:
       if (!events[startKey]) {
         events[startKey] = { p1Delta: 0, p2Delta: 0, p3Delta: 0 };
       }
       if (p === "P1") events[startKey].p1Delta++;
       if (p === "P2") events[startKey].p2Delta++;
       if (p === "P3") events[startKey].p3Delta++;
-
-      // Decremento (-1) en dayAfterEndKey
+      
+      // Decremento en el día siguiente al final:
       if (!events[dayAfterEndKey]) {
         events[dayAfterEndKey] = { p1Delta: 0, p2Delta: 0, p3Delta: 0 };
       }
@@ -116,20 +118,18 @@ exports.handler = async (event, context) => {
       if (p === "P2") events[dayAfterEndKey].p2Delta--;
       if (p === "P3") events[dayAfterEndKey].p3Delta--;
     });
-
-    // 2. Ordenar las fechas y acumular los cambios para cada prioridad
-    const allDates = Object.keys(events).sort(); // Orden cronológico
+    
+    // 2. Ordenar las fechas y acumular para obtener el total de tickets en cada día.
+    const allDates = Object.keys(events).sort();
     let currentP1 = 0, currentP2 = 0, currentP3 = 0;
-
-    // Resultado final: { "YYYY-MM-DD": { p1, p2, p3, total } }
-    const grouped = {};
-
+    const grouped = {}; // Resultado final: { "YYYY-MM-DD": { p1, p2, p3, total } }
+    
     for (const dateKey of allDates) {
       const { p1Delta, p2Delta, p3Delta } = events[dateKey];
       currentP1 += p1Delta;
       currentP2 += p2Delta;
       currentP3 += p3Delta;
-
+      
       grouped[dateKey] = {
         p1: currentP1,
         p2: currentP2,
@@ -137,9 +137,16 @@ exports.handler = async (event, context) => {
         total: currentP1 + currentP2 + currentP3
       };
     }
-
+    
     console.log("Resultado line sweep:", grouped);
-
+    
+    // 3. Revisar si en algún día hay más de 14 tickets corriendo
+    for (const dateKey in grouped) {
+      if (grouped[dateKey].total > 14) {
+        console.log(`ALERTA: El día ${dateKey} tiene ${grouped[dateKey].total} tickets corriendo.`);
+      }
+    }
+    
     return {
       statusCode: 200,
       body: JSON.stringify(grouped)
