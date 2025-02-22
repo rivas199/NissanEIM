@@ -126,7 +126,7 @@
       </label>
     </div>
     
-    <!-- Formulario para enviar datos (GPAS logic) -->
+    <!-- Formulario para enviar datos (GPAS) -->
     <form id="myForm">
       <label for="eim">EIM:</label>
       <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
@@ -152,7 +152,6 @@
     <!-- Contenedor para mostrar la información de tickets de Jira -->
     <div id="ticketsSummary" style="margin-top: 20px; background: #eee; padding: 10px;">
       <h2>Resumen de Tickets Jira (P1, P2, P3)</h2>
-      <!-- Aquí inyectaremos el resultado de la consulta a Jira -->
       <p id="jiraResult">Cargando...</p>
     </div>
   </div>
@@ -167,12 +166,12 @@
       const downloadBtn = document.getElementById('downloadBtn');
       let lastResponseData = null;
 
-      // Update environment label when toggle changes
+      // Actualiza la etiqueta del ambiente cuando se cambia el toggle
       envToggle.addEventListener('change', function() {
         envLabel.textContent = envToggle.checked ? "No Producción (UAT)" : "Producción";
       });
 
-      // Download function: triggers download of the entire API JSON response
+      // Función para descargar el JSON completo de la respuesta de GPAS
       downloadBtn.addEventListener('click', function() {
         if (lastResponseData) {
           const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lastResponseData, null, 2));
@@ -185,16 +184,17 @@
         }
       });
 
+      // Lógica para enviar el formulario a la función proxy (GPAS)
       form.addEventListener('submit', async function(event) {
         event.preventDefault();
         
-        // Define API endpoints (GPAS)
+        // Define los endpoints para GPAS
         const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const nonProdEndpoint = "https://gpas-ws-eu-uat.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const selectedEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
         console.log("Using API endpoint:", selectedEndpoint);
         
-        // Build payload including the selected API endpoint
+        // Construye el payload incluyendo el endpoint seleccionado
         const payload = {
           eims: [{
             eim: document.getElementById('eim').value,
@@ -225,11 +225,9 @@
 
           const data = await response.json();
           console.log("Response from proxy:", data);
-          // Save the entire API response for download
           lastResponseData = data;
           downloadBtn.style.display = "block";
           
-          // Extract and display a simplified summary if possible.
           if (data && data.eim && data.modelYear && data.price && data.color && data.grade && data.publishedDate) {
             resultEl.innerHTML = `
               I found your EIM: ${data.eim} <br>
@@ -250,7 +248,7 @@
         }
       });
 
-      // Llamada a la nueva función de Netlify para Jira
+      // Función para consultar los tickets de Jira desde el endpoint de Netlify
       async function fetchJiraTickets() {
         const jiraResultEl = document.getElementById('jiraResult');
         jiraResultEl.textContent = "Consultando Jira...";
@@ -260,8 +258,6 @@
             throw new Error('Error al obtener tickets de Jira: ' + response.status);
           }
           const data = await response.json();
-          
-          // data: { p1, p2, p3, total }
           jiraResultEl.innerHTML = `
             <strong>P1:</strong> ${data.p1} <br>
             <strong>P2:</strong> ${data.p2} <br>
@@ -274,7 +270,7 @@
         }
       }
 
-      // Llamar automáticamente al cargar la página
+      // Llamada automática para obtener el resumen de tickets de Jira al cargar la página
       fetchJiraTickets();
     });
   </script>
