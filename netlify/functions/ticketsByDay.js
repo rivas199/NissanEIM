@@ -22,16 +22,14 @@ exports.handler = async (event, context) => {
     };
   }
   const fetch = fetchModule.default;
-
-  // Configura un agente HTTPS que ignore problemas de certificado (ajusta si es necesario)
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // Define el JQL que recupera los tickets; asegúrate de que los tickets incluyan los campos "startDate" y "finalDate"
+  // Definir el JQL (ajusta según tus necesidades)
   const jql = `project in (PNCR) AND issuetype in (subTaskIssueTypes()) AND status in (Open, "In Testing", Scheduled, Blocked) AND (cf[13001] is EMPTY OR cf[13001] <= 2w) AND assignee in (c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0, 888024c2-03a4-402e-b2a8-71a57b8e900d, f7637a0a-ceb3-4ecf-babc-7674824a8b3d, c530c7d6-3d70-4095-a64e-3cd4d9c4d746, 4e95e2b2-53b1-4940-931e-019d149e85eb) AND summary !~ "EIM2SPECS OR Test_Data OR GPAS" ORDER BY cf[13001] ASC, key ASC`;
   
   const encodedJql = encodeURIComponent(jql);
-  // Limitar a 100 issues para reducir la carga (ajusta según sea necesario)
-  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=100`;
+  // Limitar a 50 issues para reducir la carga
+  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=50`;
   
   console.log("Encoded Jira URL:", jiraUrl);
   
@@ -46,7 +44,6 @@ exports.handler = async (event, context) => {
     });
     
     console.log("Jira API response status:", response.status);
-    
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Error response from Jira:", errorText);
@@ -59,36 +56,33 @@ exports.handler = async (event, context) => {
     const data = await response.json();
     console.log("Data received from Jira:", data);
     
-    // Objeto donde se agruparán los tickets por día
-    // Estructura: { "YYYY-MM-DD": { p1: <número>, p2: <número>, p3: <número>, total: <número> } }
-    const grouped = {};
+    const grouped = {}; // Objeto para agrupar: { "YYYY-MM-DD": { p1, p2, p3, total } }
     
+    // Parámetros de optimización
+    const oneDayMs = 86400000; 
+    const maxDaysPerTicket = 30;  // Puedes ajustar este valor según lo que necesites
+
     data.issues.forEach(issue => {
-      // Se obtiene la prioridad del ticket (ajusta según tus necesidades)
       const priorityName = issue.fields.priority?.name || "";
-      
-      // Se asume que los tickets tienen los campos "startDate" y "finalDate" en formato ISO (por ejemplo, "2025-02-22")
       const startStr = issue.fields.startDate;
       const endStr = issue.fields.finalDate;
       
       if (startStr && endStr) {
         const startDate = new Date(startStr);
         const endDate = new Date(endStr);
-        if (startDate > endDate) return; // Si las fechas están invertidas, se ignora el ticket
+        if (startDate > endDate) return;
         
-        // Limitar el procesamiento a un máximo de 60 días por ticket (para evitar bucles muy largos)
-        const maxDaysPerTicket = 60;
-        let dayCounter = 0;
-        let currentDate = new Date(startDate);
+        // Calcula la diferencia en días (redondeado hacia abajo) + 1
+        const diffDays = Math.floor((endDate - startDate) / oneDayMs) + 1;
+        const daysToProcess = Math.min(diffDays, maxDaysPerTicket);
         
-        while (currentDate <= endDate && dayCounter < maxDaysPerTicket) {
-          const dateKey = currentDate.toISOString().split('T')[0]; // "YYYY-MM-DD"
-          
+        // Usa un bucle for en lugar de while para reducir sobrecarga
+        for (let i = 0; i < daysToProcess; i++) {
+          const currentDate = new Date(startDate.getTime() + i * oneDayMs);
+          const dateKey = currentDate.toISOString().split('T')[0];
           if (!grouped[dateKey]) {
             grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
           }
-          
-          // Incrementa el contador según la prioridad
           if (priorityName.includes("P1")) {
             grouped[dateKey].p1++;
           } else if (priorityName.includes("P2")) {
@@ -97,16 +91,11 @@ exports.handler = async (event, context) => {
             grouped[dateKey].p3++;
           }
           grouped[dateKey].total++;
-          
-          // Avanza al día siguiente
-          currentDate.setDate(currentDate.getDate() + 1);
-          dayCounter++;
         }
       }
     });
     
     console.log("Tickets grouped by day:", grouped);
-    
     return {
       statusCode: 200,
       body: JSON.stringify(grouped)
