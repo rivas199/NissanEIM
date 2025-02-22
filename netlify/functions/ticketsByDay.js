@@ -25,11 +25,10 @@ exports.handler = async (event, context) => {
   
   const agent = new https.Agent({ rejectUnauthorized: false });
   
-  // JQL: Ajusta según lo necesites
   const jql = `project in (PNCR) AND issuetype in (subTaskIssueTypes()) AND status in (Open, "In Testing", Scheduled, Blocked) AND (cf[13001] is EMPTY OR cf[13001] <= 2w) AND assignee in (c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0, 888024c2-03a4-402e-b2a8-71a57b8e900d, f7637a0a-ceb3-4ecf-babc-7674824a8b3d, c530c7d6-3d70-4095-a64e-3cd4d9c4d746, 4e95e2b2-53b1-4940-931e-019d149e85eb) AND summary !~ "EIM2SPECS OR Test_Data OR GPAS" ORDER BY cf[13001] ASC, key ASC`;
   
   const encodedJql = encodeURIComponent(jql);
-  // Opcional: Limitar resultados para reducir carga
+  // Limitar a 100 issues para reducir la carga
   const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=100`;
   
   console.log("Encoded Jira URL:", jiraUrl);
@@ -62,7 +61,6 @@ exports.handler = async (event, context) => {
     
     data.issues.forEach(issue => {
       const priorityName = issue.fields.priority?.name || "";
-      // Se asume que los tickets tienen los campos "startDate" y "finalDate"
       const startStr = issue.fields.startDate;
       const endStr = issue.fields.finalDate;
       
@@ -71,21 +69,18 @@ exports.handler = async (event, context) => {
         const endDate = new Date(endStr);
         if (startDate > endDate) return;
         
-        const maxDays = 365; // Limitar a 365 días para evitar bucles excesivamente largos
+        // Limitar a 60 días por ticket para evitar bucles excesivos
+        const maxDaysPerTicket = 60;
         let dayCounter = 0;
         let currentDate = new Date(startDate);
-        while (currentDate <= endDate && dayCounter < maxDays) {
+        while (currentDate <= endDate && dayCounter < maxDaysPerTicket) {
           const dateKey = currentDate.toISOString().split('T')[0];
           if (!grouped[dateKey]) {
             grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
           }
-          if (priorityName.includes("P1")) {
-            grouped[dateKey].p1++;
-          } else if (priorityName.includes("P2")) {
-            grouped[dateKey].p2++;
-          } else if (priorityName.includes("P3")) {
-            grouped[dateKey].p3++;
-          }
+          if (priorityName.includes("P1")) grouped[dateKey].p1++;
+          else if (priorityName.includes("P2")) grouped[dateKey].p2++;
+          else if (priorityName.includes("P3")) grouped[dateKey].p3++;
           grouped[dateKey].total++;
           
           currentDate.setDate(currentDate.getDate() + 1);
