@@ -126,7 +126,7 @@
       </label>
     </div>
     
-    <!-- Formulario para enviar datos -->
+    <!-- Formulario para enviar datos (GPAS logic) -->
     <form id="myForm">
       <label for="eim">EIM:</label>
       <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
@@ -143,13 +143,21 @@
       <button type="submit">Enviar</button>
     </form>
     
-    <!-- Contenedor para mostrar el resumen -->
+    <!-- Contenedor para mostrar el resumen (GPAS) -->
     <div id="result" class="result-summary"></div>
     
     <!-- Download JSON button (hidden by default) -->
     <button id="downloadBtn" class="download-btn" style="display:none;">Download JSON</button>
+    
+    <!-- Contenedor para mostrar la información de tickets de Jira -->
+    <div id="ticketsSummary" style="margin-top: 20px; background: #eee; padding: 10px;">
+      <h2>Resumen de Tickets Jira (P1, P2, P3)</h2>
+      <!-- Aquí inyectaremos el resultado de la consulta a Jira -->
+      <p id="jiraResult">Cargando...</p>
+    </div>
   </div>
 
+  <!-- Script principal -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       const form = document.getElementById('myForm');
@@ -180,7 +188,7 @@
       form.addEventListener('submit', async function(event) {
         event.preventDefault();
         
-        // Define API endpoints
+        // Define API endpoints (GPAS)
         const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const nonProdEndpoint = "https://gpas-ws-eu-uat.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const selectedEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
@@ -197,7 +205,7 @@
           apiEndpoint: selectedEndpoint
         };
 
-        console.log("Sending POST request...");
+        console.log("Sending POST request to /proxy...");
         try {
           const response = await fetch('/.netlify/functions/proxy', {
             method: 'POST',
@@ -241,6 +249,33 @@
           downloadBtn.style.display = "none";
         }
       });
+
+      // Llamada a la nueva función de Netlify para Jira
+      async function fetchJiraTickets() {
+        const jiraResultEl = document.getElementById('jiraResult');
+        jiraResultEl.textContent = "Consultando Jira...";
+        try {
+          const response = await fetch('/.netlify/functions/jiraTickets');
+          if (!response.ok) {
+            throw new Error('Error al obtener tickets de Jira: ' + response.status);
+          }
+          const data = await response.json();
+          
+          // data: { p1, p2, p3, total }
+          jiraResultEl.innerHTML = `
+            <strong>P1:</strong> ${data.p1} <br>
+            <strong>P2:</strong> ${data.p2} <br>
+            <strong>P3:</strong> ${data.p3} <br>
+            <strong>Total:</strong> ${data.total}
+          `;
+        } catch (error) {
+          console.error(error);
+          jiraResultEl.textContent = 'Hubo un error consultando Jira: ' + error.message;
+        }
+      }
+
+      // Llamar automáticamente al cargar la página
+      fetchJiraTickets();
     });
   </script>
 </body>
