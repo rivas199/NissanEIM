@@ -1,3 +1,6 @@
 [build]
-  publish = "frontend"        # Tells Netlify to serve the files from nissan_app/frontend
-  functions = "netlify/functions"  # Tells Netlify where your serverless functions are
+  publish = "frontend"        # Directorio que se sirve
+  functions = "netlify/functions"  # Directorio de tus funciones
+
+[functions]
+  timeout = 30
