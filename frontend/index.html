@@ -2,11 +2,11 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Nissan App - API Toggle, Summary & Download JSON</title>
+  <title>Nissan App - API Toggle, Summary, Download JSON & Calendario de Tickets</title>
   <!-- Link to your Nissan CSS (adjust path if needed) -->
   <link rel="stylesheet" href="static/css/nissan-style.css">
-  <!-- Inline CSS for centering content, styling the toggle & button -->
   <style>
+    /* Estilos generales */
     body {
       display: flex;
       justify-content: center;
@@ -22,7 +22,7 @@
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
       width: 90%;
-      max-width: 600px;
+      max-width: 800px;
     }
     form {
       display: flex;
@@ -110,13 +110,56 @@
       border-radius: 4px;
       cursor: pointer;
     }
+    /* Estilos para el calendario */
+    .calendar-nav {
+      text-align: center;
+      margin: 20px 0 10px;
+    }
+    .calendar-nav button {
+      padding: 6px 10px;
+      font-size: 14px;
+      margin: 0 5px;
+      cursor: pointer;
+    }
+    .month-year {
+      font-size: 18px;
+      font-weight: bold;
+      vertical-align: middle;
+    }
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      background-color: #ccc;
+    }
+    .calendar .header {
+      background: #eee;
+      padding: 5px;
+      text-align: center;
+      font-weight: bold;
+    }
+    .calendar .day {
+      background: #fff;
+      min-height: 80px;
+      padding: 5px;
+      font-size: 14px;
+    }
+    .calendar .day span.date {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    .ticket-info {
+      font-size: 12px;
+      color: #333;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Nissan App</h1>
     
-    <!-- Slide toggle for API environment -->
+    <!-- Toggle de ambiente -->
     <div style="margin-bottom: 15px;">
       <span class="toggle-label">Ambiente:</span>
       <span id="envLabel">Producción</span>
@@ -126,7 +169,7 @@
       </label>
     </div>
     
-    <!-- Formulario para enviar datos (GPAS) -->
+    <!-- Formulario GPAS -->
     <form id="myForm">
       <label for="eim">EIM:</label>
       <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
@@ -143,22 +186,33 @@
       <button type="submit">Enviar</button>
     </form>
     
-    <!-- Contenedor para mostrar el resumen (GPAS) -->
+    <!-- Resumen GPAS -->
     <div id="result" class="result-summary"></div>
     
-    <!-- Download JSON button (hidden by default) -->
+    <!-- Botón para descargar JSON (oculto por defecto) -->
     <button id="downloadBtn" class="download-btn" style="display:none;">Download JSON</button>
     
-    <!-- Contenedor para mostrar la información de tickets de Jira -->
+    <!-- Resumen de Tickets Jira (conteo global) -->
     <div id="ticketsSummary" style="margin-top: 20px; background: #eee; padding: 10px;">
-      <h2>Resumen de Tickets Jira (P1, P2, P3)</h2>
-      <p id="jiraResult">Cargando...</p>
+      <h2>Resumen Global de Tickets Jira (P1, P2, P3)</h2>
+      <p id="jiraResult">Consultando Jira...</p>
+    </div>
+    
+    <!-- Calendario interactivo de tickets -->
+    <div id="calendarSection" style="margin-top: 20px; background: #eee; padding: 10px;">
+      <h2>Calendario de Tickets</h2>
+      <div class="calendar-nav">
+        <button id="prevMonth">Anterior</button>
+        <span class="month-year" id="monthYear"></span>
+        <button id="nextMonth">Siguiente</button>
+      </div>
+      <div class="calendar" id="calendar"></div>
     </div>
   </div>
 
-  <!-- Script principal -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
+      /* Variables y funcionalidades de GPAS y resumen global de Jira */
       const form = document.getElementById('myForm');
       const resultEl = document.getElementById('result');
       const envToggle = document.getElementById('envToggle');
@@ -166,12 +220,10 @@
       const downloadBtn = document.getElementById('downloadBtn');
       let lastResponseData = null;
 
-      // Actualiza la etiqueta del ambiente cuando se cambia el toggle
       envToggle.addEventListener('change', function() {
         envLabel.textContent = envToggle.checked ? "No Producción (UAT)" : "Producción";
       });
 
-      // Función para descargar el JSON completo de la respuesta de GPAS
       downloadBtn.addEventListener('click', function() {
         if (lastResponseData) {
           const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lastResponseData, null, 2));
@@ -184,17 +236,14 @@
         }
       });
 
-      // Lógica para enviar el formulario a la función proxy (GPAS)
       form.addEventListener('submit', async function(event) {
         event.preventDefault();
         
-        // Define los endpoints para GPAS
         const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const nonProdEndpoint = "https://gpas-ws-eu-uat.autodatadirect.com/gpas-ws/api/v1/eim2spec";
         const selectedEndpoint = envToggle.checked ? nonProdEndpoint : prodEndpoint;
         console.log("Using API endpoint:", selectedEndpoint);
         
-        // Construye el payload incluyendo el endpoint seleccionado
         const payload = {
           eims: [{
             eim: document.getElementById('eim').value,
@@ -248,7 +297,7 @@
         }
       });
 
-      // Función para consultar los tickets de Jira desde el endpoint de Netlify
+      // Función para consultar el resumen global de tickets de Jira
       async function fetchJiraTickets() {
         const jiraResultEl = document.getElementById('jiraResult');
         jiraResultEl.textContent = "Consultando Jira...";
@@ -270,8 +319,118 @@
         }
       }
 
-      // Llamada automática para obtener el resumen de tickets de Jira al cargar la página
+      // Llama a fetchJiraTickets al cargar la página
       fetchJiraTickets();
+
+      /* ------------------------------------
+         Calendario interactivo de tickets
+      ------------------------------------- */
+      let currentYear = new Date().getFullYear();
+      let currentMonth = new Date().getMonth(); // 0=Enero, 1=Febrero, etc.
+      let ticketDataByDate = {}; // Aquí se almacenarán los datos agrupados
+
+      // Función para renderizar el calendario
+      function renderCalendar(year, month) {
+        const calendarEl = document.getElementById('calendar');
+        calendarEl.innerHTML = ''; // Limpiar calendario
+
+        // Actualiza el título del mes/año
+        const monthYearEl = document.getElementById('monthYear');
+        const dateObj = new Date(year, month);
+        const monthName = dateObj.toLocaleString('es-ES', { month: 'long' });
+        monthYearEl.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1) + ' ' + year;
+
+        // Agrega encabezados de días de la semana
+        const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        daysOfWeek.forEach(day => {
+          const header = document.createElement('div');
+          header.classList.add('header');
+          header.textContent = day;
+          calendarEl.appendChild(header);
+        });
+
+        // Determina el primer día del mes y la cantidad total de días
+        const firstDayOfWeek = new Date(year, month, 1).getDay();
+        const totalDays = new Date(year, month + 1, 0).getDate();
+
+        // Agrega celdas vacías para los días previos al inicio del mes
+        for (let i = 0; i < firstDayOfWeek; i++) {
+          const emptyCell = document.createElement('div');
+          emptyCell.classList.add('day');
+          calendarEl.appendChild(emptyCell);
+        }
+
+        // Crea una celda para cada día del mes
+        for (let day = 1; day <= totalDays; day++) {
+          const cell = document.createElement('div');
+          cell.classList.add('day');
+          const currentDate = new Date(year, month, day);
+          const dateString = currentDate.toISOString().split('T')[0];
+
+          // Número del día
+          const dateSpan = document.createElement('span');
+          dateSpan.classList.add('date');
+          dateSpan.textContent = day;
+          cell.appendChild(dateSpan);
+
+          // Si hay datos para este día, mostrarlos
+          if (ticketDataByDate[dateString]) {
+            const { p1, p2, p3, total } = ticketDataByDate[dateString];
+            const infoDiv = document.createElement('div');
+            infoDiv.classList.add('ticket-info');
+            infoDiv.innerHTML = `
+              P1: ${p1} <br>
+              P2: ${p2} <br>
+              P3: ${p3} <br>
+              Total: ${total}
+            `;
+            cell.appendChild(infoDiv);
+          }
+          calendarEl.appendChild(cell);
+        }
+      }
+
+      // Navegación del calendario
+      document.getElementById('prevMonth').addEventListener('click', () => {
+        if (currentMonth === 0) {
+          currentMonth = 11;
+          currentYear--;
+        } else {
+          currentMonth--;
+        }
+        renderCalendar(currentYear, currentMonth);
+      });
+
+      document.getElementById('nextMonth').addEventListener('click', () => {
+        if (currentMonth === 11) {
+          currentMonth = 0;
+          currentYear++;
+        } else {
+          currentMonth++;
+        }
+        renderCalendar(currentYear, currentMonth);
+      });
+
+      // Función para obtener los datos agrupados de tickets por día desde el endpoint
+      async function fetchTicketDataByDay() {
+        try {
+          const response = await fetch('/.netlify/functions/ticketsByDay');
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data = await response.json();
+          // Asumimos que data es un objeto con claves en formato "YYYY-MM-DD"
+          ticketDataByDate = data;
+          renderCalendar(currentYear, currentMonth);
+        } catch (error) {
+          console.error("Error fetching ticket data:", error);
+          // Aun sin datos, renderiza el calendario vacío
+          renderCalendar(currentYear, currentMonth);
+        }
+      }
+
+      // Llama a la función para obtener datos de tickets por día
+      fetchTicketDataByDay();
     });
   </script>
 </body>
