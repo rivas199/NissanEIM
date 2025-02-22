@@ -2,5 +2,5 @@
   publish = "frontend"        # Directorio que se sirve
   functions = "netlify/functions"  # Directorio de tus funciones
 
-[functions]
-  timeout = 30
+[functions.timeout]
+  value = 30
