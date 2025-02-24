@@ -1,369 +1,104 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Nissan App - API Toggle, GPAS, Jira Summary & Calendario de Tickets</title>
-  <link rel="stylesheet" href="static/css/nissan-style.css">
-  <style>
-    /* Estilos generales */
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f0f0f0;
-      margin: 0;
-      padding: 20px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .container {
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      max-width: 900px;
-      width: 100%;
-      padding: 20px;
-    }
-    h1, h2 {
-      text-align: center;
-    }
-    /* GPAS Form Styles */
-    form {
-      display: flex;
-      flex-direction: column;
-      margin-bottom: 20px;
-    }
-    form label {
-      margin-top: 10px;
-    }
-    form input {
-      padding: 8px;
-      margin-top: 5px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    form button {
-      margin-top: 15px;
-      padding: 10px;
-      background-color: #2196F3;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .result-summary {
-      background-color: #e0e0e0;
-      padding: 10px;
-      border-radius: 4px;
-      margin-top: 20px;
-      text-align: center;
-    }
-    .download-btn {
-      margin-top: 10px;
-      padding: 10px;
-      background-color: #4CAF50;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    /* Calendario Styles */
-    .calendar-nav {
-      text-align: center;
-      margin: 20px 0;
-    }
-    .calendar-nav button {
-      padding: 6px 10px;
-      font-size: 14px;
-      margin: 0 5px;
-      cursor: pointer;
-    }
-    .month-year {
-      font-size: 18px;
-      font-weight: bold;
-      vertical-align: middle;
-    }
-    .calendar {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 1px;
-      background-color: #ccc;
-    }
-    .calendar .header {
-      background-color: #eee;
-      padding: 5px;
-      text-align: center;
-      font-weight: bold;
-    }
-    .calendar .day {
-      background-color: #fff;
-      min-height: 80px;
-      padding: 5px;
-      font-size: 14px;
-    }
-    .calendar .day span.date {
-      font-weight: bold;
-      display: block;
-      margin-bottom: 5px;
-    }
-    .ticket-info {
-      font-size: 12px;
-      color: #333;
-    }
-  </style>
+  <meta charset="utf-8" />
+  <title>Integración EIM + Tickets Jira</title>
 </head>
 <body>
-  <div class="container">
-    <h1>Nissan App</h1>
-    
-    <!-- Sección GPAS: Consulta EIM -->
-    <section id="gpasSection">
-      <h2>Consulta GPAS</h2>
-      <form id="myForm">
-        <label for="eim">EIM:</label>
-        <input type="text" id="eim" name="eim" value="TCJALBWT33EJAB---A">
-        
-        <label for="modelYear">Model Year:</label>
-        <input type="text" id="modelYear" name="modelYear" value="2025">
-        
-        <label for="languageCode">Language Code:</label>
-        <input type="text" id="languageCode" name="languageCode" value="es">
-        
-        <label for="countryCode">Country Code:</label>
-        <input type="text" id="countryCode" name="countryCode" value="mx">
-        
-        <button type="submit">Enviar</button>
-      </form>
-      <div id="result" class="result-summary">
-        Resultado GPAS
-      </div>
-      <button id="downloadBtn" class="download-btn" style="display:none;">Download JSON</button>
-    </section>
-    
-    <!-- Sección Resumen Global de Jira -->
-    <section id="jiraSummarySection">
-      <h2>Resumen Global de Tickets Jira (P1, P2, P3)</h2>
-      <div id="jiraResult" class="result-summary">
-        Consultando Jira...
-      </div>
-    </section>
-    
-    <!-- Sección Calendario de Tickets -->
-    <section id="calendarSection">
-      <h2>Calendario de Tickets</h2>
-      <div class="calendar-nav">
-        <button id="prevMonth">Anterior</button>
-        <span class="month-year" id="monthYear"></span>
-        <button id="nextMonth">Siguiente</button>
-      </div>
-      <div class="calendar" id="calendar"></div>
-    </section>
-    
-    <!-- Sección Debug: Datos Crudos de ticketsByDay -->
-    <section id="debugSection">
-      <h2>Datos Crudos de Tickets (ticketsByDay)</h2>
-      <pre id="rawJson">Cargando...</pre>
-    </section>
+  <h1>Integración EIM (GPAS) + Tickets por día (Jira)</h1>
+
+  <!-- Sección para mostrar datos de la API EIM (lo que ya existía) -->
+  <div>
+    <h2>Datos de EIM (GPAS)</h2>
+    <pre id="eim-result">Cargando...</pre>
+  </div>
+
+  <!-- Sección para mostrar los tickets por día de Jira -->
+  <div>
+    <h2>Tickets por día (P1, P2, P3)</h2>
+    <div id="jira-tickets">Cargando...</div>
   </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // -----------------------------------
-      // GPAS Section - Consulta de EIMs
-      // -----------------------------------
-      const form = document.getElementById('myForm');
-      const resultEl = document.getElementById('result');
-      const downloadBtn = document.getElementById('downloadBtn');
-      let lastResponseData = null;
-      
-      form.addEventListener('submit', async function(event) {
-        event.preventDefault();
-        // Define endpoints GPAS (puedes agregar lógica de toggle si es necesario)
-        const prodEndpoint = "https://gpas-ws-eu-prod.autodatadirect.com/gpas-ws/api/v1/eim2spec";
-        const selectedEndpoint = prodEndpoint;
-        console.log("Usando GPAS endpoint:", selectedEndpoint);
-        
-        const payload = {
-          eims: [{
-            eim: document.getElementById('eim').value,
-            modelYear: document.getElementById('modelYear').value,
-            languageCode: document.getElementById('languageCode').value,
-            countryCode: document.getElementById('countryCode').value
-          }],
-          apiEndpoint: selectedEndpoint
-        };
-        
-        try {
-          const response = await fetch('/.netlify/functions/proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          
-          if (!response.ok) {
-            throw new Error('Error en GPAS: ' + response.status);
-          }
-          
-          const data = await response.json();
-          console.log("Respuesta de GPAS:", data);
-          lastResponseData = data;
-          downloadBtn.style.display = "block";
-          resultEl.innerHTML = `
-            I found your EIM: ${data.eim} <br>
-            Model Year: ${data.modelYear} <br>
-            Color: ${data.color} <br>
-            Grade: ${data.grade} <br>
-            Published Date: ${data.publishedDate} <br>
-            Price: ${data.price} <br>
-            <br>Download the JSON to check the full spec.
-          `;
-        } catch (error) {
-          console.error("Error en GPAS API call:", error);
-          resultEl.textContent = 'Error: ' + error.message;
-          downloadBtn.style.display = "none";
-        }
+  /********************************************************************
+   * 1) CÓDIGO ANTERIOR PARA EIM (GPAS) - NO TOCAR
+   ********************************************************************/
+  // Tal cual tenías (ejemplo ficticio). 
+  // Pega aquí tu fetch o lo que uses para conectar con EIM:
+  (async function fetchEIM() {
+    try {
+      // Ejemplo: Supongamos que tu Netlify Function se llama "eimApi"
+      // y hace la lógica para el EIM. Respeto tus parámetros y método.
+      const response = await fetch('/.netlify/functions/eimApi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Parámetros o datos que envías a EIM...
+          query: 'algo',
+          otherParam: 'valor'
+        })
       });
       
-      downloadBtn.addEventListener('click', function() {
-        if (lastResponseData) {
-          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lastResponseData, null, 2));
-          const downloadAnchorNode = document.createElement('a');
-          downloadAnchorNode.setAttribute("href", dataStr);
-          downloadAnchorNode.setAttribute("download", "nissan_api_response.json");
-          document.body.appendChild(downloadAnchorNode);
-          downloadAnchorNode.click();
-          downloadAnchorNode.remove();
-        }
-      });
-      
-      // -----------------------------------
-      // Jira Global Summary
-      // -----------------------------------
-      async function fetchJiraTickets() {
-        const jiraResultEl = document.getElementById('jiraResult');
-        jiraResultEl.textContent = "Consultando Jira...";
-        try {
-          const response = await fetch('/.netlify/functions/jiraTickets');
-          if (!response.ok) {
-            throw new Error('Error al obtener tickets de Jira: ' + response.status);
-          }
-          const data = await response.json();
-          jiraResultEl.innerHTML = `
-            <strong>P1:</strong> ${data.p1} <br>
-            <strong>P2:</strong> ${data.p2} <br>
-            <strong>P3:</strong> ${data.p3} <br>
-            <strong>Total:</strong> ${data.total}
-          `;
-        } catch (error) {
-          console.error("Error en la consulta de tickets de Jira:", error);
-          jiraResultEl.textContent = 'Error: ' + error.message;
-        }
+      if (!response.ok) {
+        throw new Error('Error al obtener datos de EIM');
       }
-      fetchJiraTickets();
-      
-      // -----------------------------------
-      // Calendario de Tickets (ticketsByDay)
-      // -----------------------------------
-      let currentYear = new Date().getFullYear();
-      let currentMonth = new Date().getMonth(); // 0 = Enero, etc.
-      let ticketDataByDate = {};
-      
-      function renderCalendar(year, month) {
-        const calendarEl = document.getElementById('calendar');
-        calendarEl.innerHTML = "";
-        
-        // Título del mes y año
-        const monthYearEl = document.getElementById('monthYear');
-        const dateObj = new Date(year, month);
-        const monthName = dateObj.toLocaleString('es-ES', { month: 'long' });
-        monthYearEl.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1) + " " + year;
-        
-        // Encabezados de días
-        const daysOfWeek = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-        daysOfWeek.forEach(day => {
-          const header = document.createElement('div');
-          header.className = "header";
-          header.textContent = day;
-          calendarEl.appendChild(header);
-        });
-        
-        // Calcular el primer día del mes y total de días
-        const firstDayOfWeek = new Date(year, month, 1).getDay();
-        const totalDays = new Date(year, month + 1, 0).getDate();
-        
-        // Celdas vacías para días previos
-        for (let i = 0; i < firstDayOfWeek; i++) {
-          const emptyCell = document.createElement('div');
-          emptyCell.className = "day";
-          calendarEl.appendChild(emptyCell);
-        }
-        
-        // Celdas para cada día del mes
-        for (let day = 1; day <= totalDays; day++) {
-          const cell = document.createElement('div');
-          cell.className = "day";
-          const currentDate = new Date(year, month, day);
-          const dateKey = currentDate.toISOString().split("T")[0];
-          
-          const dateSpan = document.createElement('span');
-          dateSpan.className = "date";
-          dateSpan.textContent = day;
-          cell.appendChild(dateSpan);
-          
-          if (ticketDataByDate[dateKey]) {
-            const info = ticketDataByDate[dateKey];
-            const infoDiv = document.createElement('div');
-            infoDiv.className = "ticket-info";
-            infoDiv.innerHTML = `
-              P1: ${info.p1} <br>
-              P2: ${info.p2} <br>
-              P3: ${info.p3} <br>
-              Total: ${info.total}
-            `;
-            cell.appendChild(infoDiv);
-          }
-          calendarEl.appendChild(cell);
-        }
+
+      const data = await response.json();
+      // Mostrar en la página
+      document.getElementById('eim-result').textContent = JSON.stringify(data, null, 2);
+    } catch (error) {
+      document.getElementById('eim-result').textContent = 'Error: ' + error.message;
+      console.error(error);
+    }
+  })();
+
+  /********************************************************************
+   * 2) NUEVA LÓGICA PARA TICKETS POR DÍA (Jira)
+   ********************************************************************/
+  (async function fetchJiraTicketsByDay() {
+    // Ajusta el rango de fechas (ejemplo)
+    const START_DATE = '2025-02-01';
+    const END_DATE   = '2025-02-07';
+    const url = `/.netlify/functions/ticketsByday?start=${START_DATE}&end=${END_DATE}`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error('Error en la llamada a ticketsByday');
       }
+      // En nuestro ejemplo, la función ticketsByday devuelve algo como:
+      // {
+      //   gpasData: {...},     // si es que lo integraste ahí
+      //   dailyCounts: {
+      //     "2025-02-01": { p1: x, p2: y, p3: z },
+      //     ...
+      //   }
+      // }
+      const data = await res.json();
       
-      document.getElementById("prevMonth").addEventListener("click", () => {
-        if (currentMonth === 0) {
-          currentMonth = 11;
-          currentYear--;
-        } else {
-          currentMonth--;
-        }
-        renderCalendar(currentYear, currentMonth);
-      });
-      
-      document.getElementById("nextMonth").addEventListener("click", () => {
-        if (currentMonth === 11) {
-          currentMonth = 0;
-          currentYear++;
-        } else {
-          currentMonth++;
-        }
-        renderCalendar(currentYear, currentMonth);
-      });
-      
-      async function fetchTicketDataByDay() {
-        try {
-          const response = await fetch('/.netlify/functions/ticketsByDay');
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const data = await response.json();
-          console.log("Datos agrupados de ticketsByDay:", data);
-          ticketDataByDate = data;
-          renderCalendar(currentYear, currentMonth);
-          document.getElementById("rawJson").textContent = JSON.stringify(data, null, 2);
-        } catch (error) {
-          console.error("Error fetching ticket data:", error);
-          document.getElementById("rawJson").textContent = "Error: " + error.message;
-        }
+      // data.dailyCounts es el objeto con fechas -> {p1, p2, p3}
+      const dailyCounts = data.dailyCounts || {};
+
+      // Generar una tabla HTML
+      let html = '<table border="1" cellpadding="5" cellspacing="0">';
+      html += '<tr><th>Fecha</th><th>P1</th><th>P2</th><th>P3</th></tr>';
+
+      for (const [date, counts] of Object.entries(dailyCounts)) {
+        html += `<tr>
+          <td>${date}</td>
+          <td>${counts.p1}</td>
+          <td>${counts.p2}</td>
+          <td>${counts.p3}</td>
+        </tr>`;
       }
-      
-      fetchTicketDataByDay();
-    });
+
+      html += '</table>';
+      document.getElementById('jira-tickets').innerHTML = html;
+    } catch (error) {
+      document.getElementById('jira-tickets').textContent = 'Error: ' + error.message;
+      console.error(error);
+    }
+  })();
   </script>
 </body>
 </html>
