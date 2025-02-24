@@ -13,6 +13,7 @@ exports.handler = async (event, context) => {
 
   let fetchModule;
   try {
+    // node-fetch v3 usa import ESM:
     fetchModule = await import('node-fetch');
   } catch (importError) {
     console.error("Error importing node-fetch:", importError);
@@ -21,28 +22,29 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({ error: "Error importing node-fetch" })
     };
   }
+
   const fetch = fetchModule.default;
 
-  // Ignoramos errores de certificado si hace falta
+  // Agente HTTPS (por si necesitas ignorar certificados no válidos)
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // OJO: Ajusta el JQL para limitar la búsqueda a un rango de fechas razonable.
-  // Ejemplo: solo tickets cuya 'finalDate' está en los próximos 30 días:
-  // Asegúrate de que la sintaxis se adapte a tus campos y flujos de trabajo.
+  // JQL que filtra por "Start Date" entre dos fechas específicas:
   const jql = `
     project = PNCR
-    AND issuetype in (subTaskIssueTypes())
-    AND status in (Open, "In Testing", Scheduled, Blocked)
-    AND finalDate <= endOfDay("+30d") 
-    AND startDate >= startOfDay()
-    ORDER BY startDate ASC
+    AND resolution = Unresolved
+    AND "Start Date" >= 2025-02-21
+    AND "Start Date" <= 2025-02-24
+    ORDER BY priority DESC, updated DESC
   `;
 
-  // Codificamos el JQL
+  // Codifica el JQL
   const encodedJql = encodeURIComponent(jql.trim());
 
-  // Aquí pedimos sólo los campos que necesitamos y limitamos la cantidad:
-  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=1000&fields=priority,startDate,finalDate`;
+  // Construye la URL de Jira. Pedimos solo los campos que realmente necesitamos.
+  // Atención: en "fields=" no siempre basta con poner "Start Date"; a veces hace falta
+  // poner el ID del custom field (p. ej. customfield_12345). Pero si con esto te funciona,
+  // adelante.
+  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=1000&fields=priority,"Start Date"`;
 
   console.log("Encoded Jira URL:", jiraUrl);
 
@@ -73,49 +75,44 @@ exports.handler = async (event, context) => {
     const data = await response.json();
     console.log("Data received from Jira, total issues:", data.total);
 
-    // Estructura donde agruparemos resultados por día: { 'YYYY-MM-DD': { p1, p2, p3, total } }
+    // Estructura para agrupar por fecha: { "YYYY-MM-DD": { p1, p2, p3, total } }
     const grouped = {};
 
+    // Recorremos cada ticket devuelto
     (data.issues || []).forEach(issue => {
-      const fields = issue.fields || {};
-      const priorityName = fields.priority?.name || "";
-      const startStr = fields.startDate;
-      const endStr = fields.finalDate;
+      // Nombre de prioridad (P1, P2, P3, etc.)
+      const priorityName = issue.fields.priority?.name || "";
 
-      // Validamos que existan startDate y finalDate
-      if (!startStr || !endStr) return;
+      // El valor de "Start Date" (string de fecha).
+      // Ojo: a veces hay que usar customfield_XXXX en vez de ["Start Date"].
+      const startStr = issue.fields["Start Date"];
+      if (!startStr) return; // Si no existe, saltamos
 
-      const startDate = new Date(startStr);
-      const endDate = new Date(endStr);
+      // Convertimos a Date
+      const dateObj = new Date(startStr);
 
-      // Evitar rangos invertidos
-      if (startDate > endDate) return;
+      // Obtenemos YYYY-MM-DD
+      const dateKey = dateObj.toISOString().split('T')[0];
 
-      // Iterar por cada día desde startDate a endDate
-      // Si el rango puede ser muy grande, conviene limitarlo (por ejemplo, máx 60 días).
-      let currentDate = new Date(startDate);
-      while (currentDate <= endDate) {
-        const dateKey = currentDate.toISOString().split('T')[0];
-
-        if (!grouped[dateKey]) {
-          grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
-        }
-        if (priorityName.includes("P1")) {
-          grouped[dateKey].p1++;
-        } else if (priorityName.includes("P2")) {
-          grouped[dateKey].p2++;
-        } else if (priorityName.includes("P3")) {
-          grouped[dateKey].p3++;
-        }
-        grouped[dateKey].total++;
-
-        // Avanzar un día
-        currentDate.setDate(currentDate.getDate() + 1);
+      // Inicializamos si no existe
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
       }
+
+      // Incrementamos contadores según la prioridad
+      if (priorityName.includes("P1")) {
+        grouped[dateKey].p1++;
+      } else if (priorityName.includes("P2")) {
+        grouped[dateKey].p2++;
+      } else if (priorityName.includes("P3")) {
+        grouped[dateKey].p3++;
+      }
+      grouped[dateKey].total++;
     });
 
-    console.log("Tickets grouped by day:", grouped);
+    console.log("Tickets grouped by 'Start Date':", grouped);
 
+    // Devolvemos el objeto agrupado
     return {
       statusCode: 200,
       body: JSON.stringify(grouped)
