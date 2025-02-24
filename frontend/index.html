@@ -1,108 +1,110 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <title>Integración EIM (GPAS) + Jira Tickets</title>
+  <meta charset="UTF-8" />
+  <title>Integración GPAS (EIM) + Tickets Jira</title>
+  <!-- Mantén la ruta de tu hoja de estilos original -->
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <h1>Aplicación Nissan: EIM + Tickets por Día</h1>
+  <header>
+    <h1>Mi Página de GPAS (EIM) + Tickets Jira</h1>
+  </header>
 
-  <!-- Sección EIM (lo que ya tenías) -->
-  <div>
+  <!-- Sección donde mostramos resultados de GPAS/EIM -->
+  <section id="gpas-section">
     <h2>Datos de EIM (GPAS)</h2>
-    <pre id="eim-result">Cargando EIM...</pre>
-  </div>
+    <div id="gpas-results">Cargando datos de EIM...</div>
+  </section>
 
-  <!-- Sección Jira Tickets por día -->
-  <div>
-    <h2>Tickets Jira por día (P1, P2, P3)</h2>
-    <div id="jira-tickets">Cargando Jira...</div>
-  </div>
+  <!-- Sección para mostrar los tickets de Jira por día -->
+  <section id="jira-section">
+    <h2>Tickets por día (Jira)</h2>
+    <div id="jira-tickets">Cargando tickets Jira...</div>
+  </section>
 
   <script>
-  /**************************************************************
-   * 1) LLAMADA A EIM/GPAS (ya existente)
-   *    Respeta tu código, asumiendo que antes llamabas a /proxy
-   **************************************************************/
-  async function fetchEIM() {
-    try {
-      // EJEMPLO, si llamabas a tu netlify function "proxy.js" con POST:
-      // (Sustituye por tu fetch real, tal cual lo tenías)
-      const response = await fetch('/.netlify/functions/proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // Parámetros que enviabas a EIM...
-          query: 'algo',
-          user: 'miUsuario'
-        })
-      });
+    /********************************************************************
+     * 1) CÓDIGO PREVIO DE EIM (GPAS) - SIN MODIFICAR
+     *    Aquí va la lógica que ya te funcionaba para llamar a tu Netlify
+     *    function o API de GPAS/EIM. Pégala tal cual.
+     ********************************************************************/
+    (async function fetchEIM() {
+      try {
+        // Ejemplo que llama a /.netlify/functions/proxy o el nombre que uses
+        // Mantén exactamente lo que tenías antes
+        const response = await fetch('/.netlify/functions/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            // Tus parámetros EIM
+            someParam: 'value',
+            anotherParam: '123'
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error('Error en la llamada a EIM/GPAS');
+        if (!response.ok) {
+          throw new Error('Error al obtener datos de GPAS/EIM');
+        }
+
+        const data = await response.json();
+
+        // Mostrar en la página
+        document.getElementById('gpas-results').textContent =
+          JSON.stringify(data, null, 2);
+
+      } catch (error) {
+        document.getElementById('gpas-results').textContent =
+          'Error en EIM: ' + error.message;
+        console.error('Error en fetchEIM:', error);
       }
+    })();
 
-      const data = await response.json();
-      document.getElementById('eim-result').textContent =
-        JSON.stringify(data, null, 2);
+    /********************************************************************
+     * 2) LÓGICA DE TICKETS POR DÍA (Jira)
+     *    Se agrega para que, además, puedas ver el conteo P1,P2,P3.
+     ********************************************************************/
+    (async function fetchJiraTicketsByDay() {
+      try {
+        // Fechas de ejemplo: ajusta según necesites
+        const START_DATE = '2025-02-01';
+        const END_DATE   = '2025-02-07';
 
-    } catch (error) {
-      document.getElementById('eim-result').textContent =
-        'Error EIM: ' + error.message;
-      console.error(error);
-    }
-  }
+        // Llamada a tu netlify function ticketsByDay
+        const url = `/.netlify/functions/ticketsByDay?start=${START_DATE}&end=${END_DATE}`;
+        const res = await fetch(url);
 
-  /**************************************************************
-   * 2) LLAMADA A JIRA ticketsByDay
-   **************************************************************/
-  async function fetchJiraTicketsByDay() {
-    try {
-      // Ajusta el rango de fechas
-      const START_DATE = '2025-02-01';
-      const END_DATE   = '2025-02-07';
+        if (!res.ok) {
+          throw new Error('Error al obtener tickets de Jira (ticketsByDay)');
+        }
 
-      // Llamada a la netlify function "jiraTicketsByDay.js"
-      const url = `/.netlify/functions/jiraTicketsByDay?start=${START_DATE}&end=${END_DATE}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error('Error en la llamada a jiraTicketsByDay');
+        const data = await res.json();
+        // data.dailyCounts: { "2025-02-01": { p1, p2, p3 }, ... }
+        const dailyCounts = data.dailyCounts || {};
+
+        // Construimos tabla
+        let html = '<table class="jira-table">';
+        html += '<thead><tr><th>Fecha</th><th>P1</th><th>P2</th><th>P3</th></tr></thead>';
+        html += '<tbody>';
+
+        for (const [date, counts] of Object.entries(dailyCounts)) {
+          html += `<tr>
+            <td>${date}</td>
+            <td>${counts.p1}</td>
+            <td>${counts.p2}</td>
+            <td>${counts.p3}</td>
+          </tr>`;
+        }
+        html += '</tbody></table>';
+
+        document.getElementById('jira-tickets').innerHTML = html;
+
+      } catch (error) {
+        document.getElementById('jira-tickets').textContent =
+          'Error: ' + error.message;
+        console.error('Error en fetchJiraTicketsByDay:', error);
       }
-
-      // La respuesta JSON debe traer un objeto:
-      // { dailyCounts: { "2025-02-01": {p1, p2, p3}, ... } }
-      const data = await res.json();
-
-      // data.dailyCounts es el diccionario con los conteos día a día
-      const dailyCounts = data.dailyCounts || {};
-
-      // Construimos una tabla
-      let html = '<table border="1" cellspacing="0" cellpadding="5">';
-      html += '<tr><th>Fecha</th><th>P1</th><th>P2</th><th>P3</th></tr>';
-
-      for (const [date, counts] of Object.entries(dailyCounts)) {
-        html += `<tr>
-          <td>${date}</td>
-          <td>${counts.p1}</td>
-          <td>${counts.p2}</td>
-          <td>${counts.p3}</td>
-        </tr>`;
-      }
-
-      html += '</table>';
-      document.getElementById('jira-tickets').innerHTML = html;
-
-    } catch (error) {
-      document.getElementById('jira-tickets').textContent =
-        'Error Jira: ' + error.message;
-      console.error(error);
-    }
-  }
-
-  // Al cargar la página, invocamos ambas llamadas
-  fetchEIM();                // Lógica EIM
-  fetchJiraTicketsByDay();   // Nueva lógica Jira
+    })();
   </script>
-
 </body>
 </html>
