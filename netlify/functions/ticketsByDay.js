@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 
 exports.handler = async function(event, context) {
   try {
-    // 1) Parámetros ?start=YYYY-MM-DD&end=YYYY-MM-DD
+    // 1) Leer parámetros ?start=YYYY-MM-DD&end=YYYY-MM-DD
     const { start, end } = event.queryStringParameters || {};
     if (!start || !end) {
       return {
@@ -20,8 +20,8 @@ exports.handler = async function(event, context) {
       };
     }
 
-    // 2) Credenciales Jira (variables de entorno en Netlify)
-    const baseUrl  = process.env.JIRA_BASE_URL;   // e.g.: "https://miempresa.atlassian.net"
+    // 2) Variables de entorno para Jira (en Netlify)
+    const baseUrl  = process.env.JIRA_BASE_URL;
     const username = process.env.JIRA_USERNAME;
     const apiToken = process.env.JIRA_API_TOKEN;
 
@@ -29,30 +29,28 @@ exports.handler = async function(event, context) {
       return {
         statusCode: 500,
         body: JSON.stringify({
-          error: 'Faltan variables de entorno: JIRA_BASE_URL, JIRA_USERNAME, JIRA_API_TOKEN'
+          error: 'Faltan JIRA_BASE_URL, JIRA_USERNAME, JIRA_API_TOKEN en variables de entorno'
         })
       };
     }
 
-    // 3) Autenticación básica
+    // 3) Autenticación Basic
     const auth = Buffer.from(`${username}:${apiToken}`).toString('base64');
 
+    // 4) Recorremos los días
     const dailyCounts = {};
-
-    // 4) Bucle día a día
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const currentDay = new Date(d);
-      const nextDay = new Date(currentDay);
-      nextDay.setDate(nextDay.getDate() + 1);
+      const dayStr = new Date(d).toISOString().split('T')[0];
 
-      const dayStr = currentDay.toISOString().split('T')[0];
+      const nextDay = new Date(d);
+      nextDay.setDate(nextDay.getDate() + 1);
       const nextDayStr = nextDay.toISOString().split('T')[0];
 
-      // Filtra tickets P1, P2, P3 creados en dayStr
+      // JQL: Prioridades P1,P2,P3, creadas en [dayStr, nextDayStr)
       const jql = `priority in (P1, P2, P3) AND created >= "${dayStr}" AND created < "${nextDayStr}"`;
-      const url = `${baseUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=1000`;
 
-      const response = await fetch(url, {
+      const jiraUrl = `${baseUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=1000`;
+      const response = await fetch(jiraUrl, {
         headers: {
           'Authorization': `Basic ${auth}`,
           'Accept': 'application/json'
@@ -67,17 +65,17 @@ exports.handler = async function(event, context) {
       const issues = data.issues || [];
 
       let p1 = 0, p2 = 0, p3 = 0;
-      issues.forEach(issue => {
+      for (const issue of issues) {
         const priorityName = issue.fields?.priority?.name;
         if (priorityName === 'P1') p1++;
         else if (priorityName === 'P2') p2++;
         else if (priorityName === 'P3') p3++;
-      });
+      }
 
       dailyCounts[dayStr] = { p1, p2, p3 };
     }
 
-    // 5) Devolver respuesta
+    // 5) Respuesta
     return {
       statusCode: 200,
       body: JSON.stringify({ dailyCounts })
