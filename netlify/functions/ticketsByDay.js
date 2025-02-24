@@ -1,5 +1,4 @@
 // ticketsByDay.js
-
 const https = require('https');
 const JIRA_TOKEN = process.env.JIRA_TOKEN;
 
@@ -24,19 +23,29 @@ exports.handler = async (event, context) => {
   }
   const fetch = fetchModule.default;
 
-  // Crea un agente HTTPS (ignora errores de certificado si es necesario)
+  // Ignoramos errores de certificado si hace falta
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // Define el JQL para consultar los tickets.
-  // Asegúrate de que en Jira los tickets tienen definidos los campos "startDate" y "finalDate".
-  const jql = `project in (PNCR) AND issuetype in (subTaskIssueTypes()) AND status in (Open, "In Testing", Scheduled, Blocked) AND (cf[13001] is EMPTY OR cf[13001] <= 2w) AND assignee in (c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0, 888024c2-03a4-402e-b2a8-71a57b8e900d, f7637a0a-ceb3-4ecf-babc-7674824a8b3d, c530c7d6-3d70-4095-a64e-3cd4d9c4d746, 4e95e2b2-53b1-4940-931e-019d149e85eb) AND summary !~ "EIM2SPECS OR Test_Data OR GPAS" ORDER BY cf[13001] ASC, key ASC`;
+  // OJO: Ajusta el JQL para limitar la búsqueda a un rango de fechas razonable.
+  // Ejemplo: solo tickets cuya 'finalDate' está en los próximos 30 días:
+  // Asegúrate de que la sintaxis se adapte a tus campos y flujos de trabajo.
+  const jql = `
+    project = PNCR
+    AND issuetype in (subTaskIssueTypes())
+    AND status in (Open, "In Testing", Scheduled, Blocked)
+    AND finalDate <= endOfDay("+30d") 
+    AND startDate >= startOfDay()
+    ORDER BY startDate ASC
+  `;
 
-  // Codifica el JQL para usarlo en la URL
-  const encodedJql = encodeURIComponent(jql);
-  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}`;
-  
+  // Codificamos el JQL
+  const encodedJql = encodeURIComponent(jql.trim());
+
+  // Aquí pedimos sólo los campos que necesitamos y limitamos la cantidad:
+  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=1000&fields=priority,startDate,finalDate`;
+
   console.log("Encoded Jira URL:", jiraUrl);
-  
+
   try {
     const response = await fetch(jiraUrl, {
       method: 'GET',
@@ -44,68 +53,74 @@ exports.handler = async (event, context) => {
         'Authorization': `Bearer ${JIRA_TOKEN}`,
         'Content-Type': 'application/json'
       },
-      agent: agent
+      agent
     });
-    
+
     console.log("Jira API response status:", response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Error response from Jira:", errorText);
       return {
         statusCode: response.status,
-        body: JSON.stringify({ error: `Jira returned status ${response.status}`, details: errorText })
+        body: JSON.stringify({
+          error: `Jira returned status ${response.status}`,
+          details: errorText
+        })
       };
     }
-    
+
     const data = await response.json();
-    console.log("Data received from Jira:", data);
-    
-    // Agrupar tickets por día según su rango (desde startDate hasta finalDate, inclusive)
-    const grouped = {}; // Estructura: { "YYYY-MM-DD": { p1: X, p2: Y, p3: Z, total: N } }
-    
-    data.issues.forEach(issue => {
-      const priorityName = issue.fields.priority?.name || "";
-      // Se asume que los tickets tienen campos "startDate" y "finalDate"
-      const startStr = issue.fields.startDate;
-      const endStr = issue.fields.finalDate;
-      
-      if (startStr && endStr) {
-        const startDate = new Date(startStr);
-        const endDate = new Date(endStr);
-        
-        // Asegurarse de que startDate no es mayor que endDate
-        if (startDate > endDate) return;
-        
-        // Iterar por cada día desde startDate hasta endDate (inclusive)
-        let currentDate = new Date(startDate);
-        while (currentDate <= endDate) {
-          const dateKey = currentDate.toISOString().split('T')[0];
-          if (!grouped[dateKey]) {
-            grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
-          }
-          if (priorityName.includes("P1")) {
-            grouped[dateKey].p1++;
-          } else if (priorityName.includes("P2")) {
-            grouped[dateKey].p2++;
-          } else if (priorityName.includes("P3")) {
-            grouped[dateKey].p3++;
-          }
-          grouped[dateKey].total++;
-          
-          // Avanza al siguiente día
-          currentDate.setDate(currentDate.getDate() + 1);
+    console.log("Data received from Jira, total issues:", data.total);
+
+    // Estructura donde agruparemos resultados por día: { 'YYYY-MM-DD': { p1, p2, p3, total } }
+    const grouped = {};
+
+    (data.issues || []).forEach(issue => {
+      const fields = issue.fields || {};
+      const priorityName = fields.priority?.name || "";
+      const startStr = fields.startDate;
+      const endStr = fields.finalDate;
+
+      // Validamos que existan startDate y finalDate
+      if (!startStr || !endStr) return;
+
+      const startDate = new Date(startStr);
+      const endDate = new Date(endStr);
+
+      // Evitar rangos invertidos
+      if (startDate > endDate) return;
+
+      // Iterar por cada día desde startDate a endDate
+      // Si el rango puede ser muy grande, conviene limitarlo (por ejemplo, máx 60 días).
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateKey = currentDate.toISOString().split('T')[0];
+
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
         }
+        if (priorityName.includes("P1")) {
+          grouped[dateKey].p1++;
+        } else if (priorityName.includes("P2")) {
+          grouped[dateKey].p2++;
+        } else if (priorityName.includes("P3")) {
+          grouped[dateKey].p3++;
+        }
+        grouped[dateKey].total++;
+
+        // Avanzar un día
+        currentDate.setDate(currentDate.getDate() + 1);
       }
     });
-    
+
     console.log("Tickets grouped by day:", grouped);
-    
+
     return {
       statusCode: 200,
       body: JSON.stringify(grouped)
     };
-    
+
   } catch (error) {
     console.error("Error querying Jira:", error);
     return {
