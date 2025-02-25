@@ -3,35 +3,51 @@ const JIRA_TOKEN = process.env.JIRA_TOKEN;
 
 exports.handler = async (event, context) => {
   if (!JIRA_TOKEN) {
-    console.error("JIRA_TOKEN not defined");
+    console.error("JIRA_TOKEN is not defined");
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "JIRA_TOKEN not defined" })
+      body: JSON.stringify({ error: "JIRA_TOKEN is not defined" })
     };
   }
 
   let fetchModule;
   try {
-    fetchModule = await import('node-fetch'); // using node-fetch v3
+    // node-fetch v3 is ESM only
+    fetchModule = await import('node-fetch');
   } catch (importError) {
     console.error("Error importing node-fetch:", importError);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Error importing node-fetch", debug: importError.message })
+      body: JSON.stringify({ error: "Error importing node-fetch" })
     };
   }
   const fetch = fetchModule.default;
+
+  // If needed, ignore self-signed certs
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // JQL: get unresolved tickets from project PNCR created from today until two months ahead.
+  // --- 1) JQL from your example ---
+  // This query fetches tasks from PNCR with specific conditions, 
+  // including the custom field cf[13001], summary filters, and assignee.
+  // We also ORDER BY "Start Date" (assuming that's the field name).
   const jql = `
-    project = PNCR AND issuetype = Task AND status in (Open, "In Progress", Scheduled, Blocked) AND (cf[13001] is EMPTY OR cf[13001] <= 8w AND cf[13001] >= 1w) AND summary !~ "EIM2SPECS OR Test_Data OR GPAS" AND assignee = c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0
+    project = PNCR
+    AND issuetype = Task
+    AND status in (Open, "In Progress", Scheduled, Blocked)
+    AND (cf[13001] is EMPTY OR (cf[13001] <= 8w AND cf[13001] >= 1w))
+    AND summary !~ "EIM2SPECS OR Test_Data OR GPAS"
+    AND assignee = c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0
+    ORDER BY "Start Date" ASC
   `;
-  console.log("[ticketsByDay] Using JQL:", jql);
 
+  // --- 2) Encode JQL for URL ---
   const encodedJql = encodeURIComponent(jql.trim());
-  // Limit to 500 results and request only the fields we need (priority and created)
-  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=500&fields=priority,created`;
+
+  // --- 3) We request the fields we need: "Start Date" and "End Date"
+  // (adjust if your actual field names differ). Also limit to 500 results 
+  // to reduce risk of timeouts.
+  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=500&fields="Start Date","End Date"`;
+
   console.log("[ticketsByDay] Jira URL:", jiraUrl);
 
   try {
@@ -44,47 +60,73 @@ exports.handler = async (event, context) => {
       agent
     });
 
-    console.log("[ticketsByDay] Jira response status:", response.status);
+    console.log("[ticketsByDay] Response status:", response.status);
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[ticketsByDay] Error from Jira:", errorText);
       return {
         statusCode: response.status,
-        body: JSON.stringify({ error: `Jira returned status ${response.status}`, details: errorText })
+        body: JSON.stringify({
+          error: `Jira returned status ${response.status}`,
+          details: errorText
+        })
       };
     }
 
+    // --- 4) Parse JSON from Jira ---
     const data = await response.json();
-    console.log("[ticketsByDay] Total issues returned:", data.issues?.length || 0);
+    const issues = data.issues || [];
+    console.log("[ticketsByDay] Total issues returned:", issues.length);
 
-    // Group issues by their local created date (YYYY-MM-DD)
+    // We'll build an object: { "YYYY-MM-DD": { count: N } }
     const grouped = {};
-    for (const issue of data.issues || []) {
-      const priorityName = issue.fields.priority?.name || "";
-      const createdStr = issue.fields.created;
-      if (!createdStr) continue;
 
-      // Parse the created date and use local values to avoid timezone shifts
-      const dateObj = new Date(createdStr);
-      if (isNaN(dateObj.getTime())) continue;
-      const localYear = dateObj.getFullYear();
-      const localMonth = dateObj.getMonth() + 1; // zero-based month, so add 1
-      const localDay = dateObj.getDate();
-      const dateKey = `${localYear}-${String(localMonth).padStart(2, '0')}-${String(localDay).padStart(2, '0')}`;
+    for (const issue of issues) {
+      // Get the "Start Date" and "End Date" fields
+      // If your real fields are named differently, adjust here:
+      const startStr = issue.fields["Start Date"];
+      const endStr = issue.fields["End Date"];
 
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
+      if (!startStr || !endStr) {
+        // If either is missing, skip this issue
+        continue;
       }
-      if (priorityName.includes("P1")) grouped[dateKey].p1++;
-      else if (priorityName.includes("P2")) grouped[dateKey].p2++;
-      else if (priorityName.includes("P3")) grouped[dateKey].p3++;
-      grouped[dateKey].total++;
+
+      const startDate = new Date(startStr);
+      const endDate = new Date(endStr);
+
+      // If the start is after the end, skip
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+        continue;
+      }
+
+      // --- 5) Iterate day by day from startDate to endDate ---
+      // So that each day in that range gets +1 in "count".
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        // Format local date as YYYY-MM-DD
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const dateKey = `${year}-${month}-${day}`;
+
+        // Initialize if needed
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = { count: 0 };
+        }
+        grouped[dateKey].count++;
+
+        // Move to the next day
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
     }
 
     console.log("[ticketsByDay] Grouped result:", grouped);
+
+    // --- 6) Return the grouped object as JSON ---
     return {
       statusCode: 200,
-      body: JSON.stringify({ result: grouped, debug: { totalIssues: data.issues?.length || 0 } })
+      body: JSON.stringify(grouped)
     };
 
   } catch (error) {
