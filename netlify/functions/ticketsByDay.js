@@ -28,25 +28,22 @@ exports.handler = async (event, context) => {
   // Agente HTTPS (por si necesitas ignorar certificados no válidos)
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // JQL que filtra por "Start Date" entre dos fechas específicas:
+  // JQL: tickets de PNCR asignados a Robert Wasilewski (C), Start Date [hoy .. +30d]
   const jql = `
     project = PNCR
-    AND resolution = Unresolved
-    AND "Start Date" >= 2025-02-21
-    AND "Start Date" <= 2025-02-24
-    ORDER BY priority DESC, updated DESC
+    AND assignee = "Robert Wasilewski (C)"
+    AND "Start Date" >= startOfDay()
+    AND "Start Date" <= endOfDay("+30d")
+    ORDER BY priority DESC
   `;
 
-  // Codifica el JQL
+  // Codificamos el JQL
   const encodedJql = encodeURIComponent(jql.trim());
 
-  // Construye la URL de Jira. Pedimos solo los campos que realmente necesitamos.
-  // Atención: en "fields=" no siempre basta con poner "Start Date"; a veces hace falta
-  // poner el ID del custom field (p. ej. customfield_12345). Pero si con esto te funciona,
-  // adelante.
+  // En fields= pasamos "priority" y "Start Date". Ajusta si necesitas más campos.
   const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=1000&fields=priority,"Start Date"`;
 
-  console.log("Encoded Jira URL:", jiraUrl);
+  console.log("Jira URL:", jiraUrl);
 
   try {
     const response = await fetch(jiraUrl, {
@@ -57,8 +54,6 @@ exports.handler = async (event, context) => {
       },
       agent
     });
-
-    console.log("Jira API response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -75,31 +70,26 @@ exports.handler = async (event, context) => {
     const data = await response.json();
     console.log("Data received from Jira, total issues:", data.total);
 
-    // Estructura para agrupar por fecha: { "YYYY-MM-DD": { p1, p2, p3, total } }
+    // Estructura para agrupar: { "YYYY-MM-DD": { p1, p2, p3, total } }
     const grouped = {};
 
-    // Recorremos cada ticket devuelto
-    (data.issues || []).forEach(issue => {
-      // Nombre de prioridad (P1, P2, P3, etc.)
+    for (const issue of data.issues || []) {
       const priorityName = issue.fields.priority?.name || "";
-
-      // El valor de "Start Date" (string de fecha).
-      // Ojo: a veces hay que usar customfield_XXXX en vez de ["Start Date"].
       const startStr = issue.fields["Start Date"];
-      if (!startStr) return; // Si no existe, saltamos
 
-      // Convertimos a Date
+      // Si no hay "Start Date", saltamos
+      if (!startStr) continue;
+
+      // Convertimos a Date y formateamos a YYYY-MM-DD
       const dateObj = new Date(startStr);
-
-      // Obtenemos YYYY-MM-DD
       const dateKey = dateObj.toISOString().split('T')[0];
 
-      // Inicializamos si no existe
+      // Inicializa la estructura
       if (!grouped[dateKey]) {
         grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
       }
 
-      // Incrementamos contadores según la prioridad
+      // Chequeo básico de prioridad
       if (priorityName.includes("P1")) {
         grouped[dateKey].p1++;
       } else if (priorityName.includes("P2")) {
@@ -108,16 +98,14 @@ exports.handler = async (event, context) => {
         grouped[dateKey].p3++;
       }
       grouped[dateKey].total++;
-    });
+    }
 
     console.log("Tickets grouped by 'Start Date':", grouped);
 
-    // Devolvemos el objeto agrupado
     return {
       statusCode: 200,
       body: JSON.stringify(grouped)
     };
-
   } catch (error) {
     console.error("Error querying Jira:", error);
     return {
