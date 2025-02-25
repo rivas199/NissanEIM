@@ -25,7 +25,7 @@ exports.handler = async (event, context) => {
 
   // JQL: get unresolved tickets from project PNCR created from today until two months ahead.
   const jql = `
-    project in (PNCR) AND issuetype in (subTaskIssueTypes()) AND status in (Open, "In Testing", Scheduled, Blocked) AND (cf[13001] is EMPTY OR cf[13001] <= 2w) AND assignee in (c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0, 888024c2-03a4-402e-b2a8-71a57b8e900d, f7637a0a-ceb3-4ecf-babc-7674824a8b3d, c530c7d6-3d70-4095-a64e-3cd4d9c4d746, 4e95e2b2-53b1-4940-931e-019d149e85eb) AND summary !~ "EIM2SPECS OR Test_Data OR GPAS" ORDER BY cf[13001] ASC, key ASC
+    project = PNCR AND issuetype = Task AND status in (Open, "In Progress", Scheduled, Blocked) AND (cf[13001] is EMPTY OR cf[13001] <= 8w AND cf[13001] >= 1w) AND summary !~ "EIM2SPECS OR Test_Data OR GPAS" AND assignee = c2d37c51-9fc7-4dd3-8bf1-92c674ee6bb0
   `;
   console.log("[ticketsByDay] Using JQL:", jql);
 
