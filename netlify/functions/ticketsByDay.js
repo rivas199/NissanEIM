@@ -3,91 +3,106 @@ const JIRA_TOKEN = process.env.JIRA_TOKEN;
 
 exports.handler = async (event, context) => {
   if (!JIRA_TOKEN) {
-    console.error("JIRA_TOKEN no está definido");
+    console.error("JIRA_TOKEN is not defined");
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "JIRA_TOKEN no está definido" })
+      body: JSON.stringify({ 
+        error: "JIRA_TOKEN not defined",
+        debug: "No JIRA_TOKEN in environment variables"
+      })
     };
   }
 
   let fetchModule;
   try {
-    fetchModule = await import('node-fetch'); // node-fetch v3 en ESM
+    fetchModule = await import('node-fetch');
   } catch (importError) {
     console.error("Error importing node-fetch:", importError);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Error importing node-fetch" })
+      body: JSON.stringify({ 
+        error: "Error importing node-fetch",
+        debug: importError.message
+      })
     };
   }
   const fetch = fetchModule.default;
 
-  // Ignorar certificados si hace falta
+  // Optionally ignore self-signed certificates, etc.
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // JQL: traer solamente tickets cuyo "created" esté entre 2025-02-26 y 2025-02-27 (inclusive).
-  // Formato: created >= "YYYY-MM-DD HH:mm" AND created <= "YYYY-MM-DD HH:mm"
-  // Ajusta el proyecto y las condiciones (status, etc.) a tu gusto.
+  // Simple JQL for demonstration. Adjust as needed:
   const jql = `
     project = PNCR
+    AND resolution = Unresolved
     AND created >= "2025-02-26 00:00"
     AND created <= "2025-02-27 23:59"
     ORDER BY created ASC
   `;
 
-  // Codificamos la JQL
-  const encodedJql = encodeURIComponent(jql.trim());
+  // Log the JQL we’re using
+  console.log("[ticketsByDay] Using JQL:", jql);
 
-  // maxResults=50 para limitar la respuesta (evitar timeouts).
-  // Pedimos los campos 'priority' y 'created'.
+  const encodedJql = encodeURIComponent(jql.trim());
   const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=50&fields=priority,created`;
 
-  console.log("ticketsByDay - URL:", jiraUrl);
+  // Log the actual Jira URL
+  console.log("[ticketsByDay] Jira URL:", jiraUrl);
 
   try {
     const response = await fetch(jiraUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${JIRA_TOKEN}`,
+        Authorization: `Bearer ${JIRA_TOKEN}`,
         'Content-Type': 'application/json'
       },
       agent
     });
 
+    console.log("[ticketsByDay] Jira response status:", response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("ticketsByDay - Error from Jira:", errorText);
+      console.error("[ticketsByDay] Error text from Jira:", errorText);
       return {
         statusCode: response.status,
         body: JSON.stringify({
           error: `Jira returned status ${response.status}`,
-          details: errorText
+          details: errorText,
+          debug: "Failed on the response fetch"
         })
       };
     }
 
+    // We do a quick debug log about the headers:
+    console.log("[ticketsByDay] Response headers:", response.headers.raw());
+
     const data = await response.json();
-    console.log("ticketsByDay - total issues returned:", data.issues?.length || 0);
+    console.log("[ticketsByDay] Data received, total issues:", data.issues?.length || 0);
 
-    // Agrupamos por día de creación (YYYY-MM-DD)
-    const grouped = {}; // { "2025-02-26": { p1, p2, p3, total }, ... }
+    // Group by date
+    const grouped = {}; // e.g. { "2025-02-26": { p1: X, p2: Y, p3: Z, total: N }, ... }
 
-    for (const issue of data.issues || []) {
+    (data.issues || []).forEach(issue => {
       const priorityName = issue.fields.priority?.name || "";
-      const createdStr = issue.fields.created;
-      if (!createdStr) continue;
+      const createdStr = issue.fields.created || "";
+      if (!createdStr) return;
+
+      // Log a little debug if you want:
+      console.log(`[ticketsByDay] Issue key: ${issue.key}, created: ${createdStr}, priority: ${priorityName}`);
 
       const dateObj = new Date(createdStr);
-      if (isNaN(dateObj.getTime())) continue;
+      if (isNaN(dateObj.getTime())) {
+        console.warn(`[ticketsByDay] Invalid date: ${createdStr} for issue ${issue.key}`);
+        return;
+      }
 
-      const dateKey = dateObj.toISOString().split('T')[0]; 
-      // Ej: "2025-02-26"
+      const dateKey = dateObj.toISOString().split('T')[0];
 
       if (!grouped[dateKey]) {
         grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
       }
 
-      // Checamos prioridad: P1, P2, P3
       if (priorityName.includes("P1")) {
         grouped[dateKey].p1++;
       } else if (priorityName.includes("P2")) {
@@ -96,20 +111,30 @@ exports.handler = async (event, context) => {
         grouped[dateKey].p3++;
       }
       grouped[dateKey].total++;
-    }
+    });
 
-    console.log("ticketsByDay - grouped result:", grouped);
+    console.log("[ticketsByDay] Final grouped:", grouped);
 
+    // We can return some debug info in the body if you want to see it in the browser
     return {
       statusCode: 200,
-      body: JSON.stringify(grouped)
+      body: JSON.stringify({
+        result: grouped,
+        debug: {
+          totalIssuesReturned: data.issues?.length || 0,
+          note: "Check Netlify logs for more details"
+        }
+      })
     };
 
   } catch (error) {
-    console.error("ticketsByDay - Error:", error);
+    console.error("[ticketsByDay] Exception:", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({
+        error: error.message,
+        debug: "Exception occurred in the try-catch block"
+      })
     };
   }
 };
