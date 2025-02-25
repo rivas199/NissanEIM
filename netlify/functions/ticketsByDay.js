@@ -1,5 +1,3 @@
-// ticketsByDay.js
-
 const https = require('https');
 const JIRA_TOKEN = process.env.JIRA_TOKEN;
 
@@ -14,7 +12,7 @@ exports.handler = async (event, context) => {
 
   let fetchModule;
   try {
-    fetchModule = await import('node-fetch');
+    fetchModule = await import('node-fetch'); // node-fetch v3 en ESM
   } catch (importError) {
     console.error("Error importing node-fetch:", importError);
     return {
@@ -23,23 +21,28 @@ exports.handler = async (event, context) => {
     };
   }
   const fetch = fetchModule.default;
+
+  // Ignorar certificados si hace falta
   const agent = new https.Agent({ rejectUnauthorized: false });
 
-  // JQL: similar, para 14 días
+  // JQL: traer solamente tickets cuyo "created" esté entre 2025-02-26 y 2025-02-27 (inclusive).
+  // Formato: created >= "YYYY-MM-DD HH:mm" AND created <= "YYYY-MM-DD HH:mm"
+  // Ajusta el proyecto y las condiciones (status, etc.) a tu gusto.
   const jql = `
     project = PNCR
-    AND issuetype in (subTaskIssueTypes())
-    AND status in (Open, "In Testing", Scheduled, Blocked)
-    AND "Start Date" >= startOfDay()
-    AND "Start Date" <= endOfDay("+14d")
-    ORDER BY priority DESC
+    AND created >= "2025-02-26 00:00"
+    AND created <= "2025-02-27 23:59"
+    ORDER BY created ASC
   `;
 
-  // Pedimos sólo fields=priority,"Start Date" y limitamos a 500
+  // Codificamos la JQL
   const encodedJql = encodeURIComponent(jql.trim());
-  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=500&fields=priority,"Start Date"`;
 
-  console.log("ticketsByDay - Jira URL:", jiraUrl);
+  // maxResults=50 para limitar la respuesta (evitar timeouts).
+  // Pedimos los campos 'priority' y 'created'.
+  const jiraUrl = `https://tools.publicis.sapient.com/jira/rest/api/2/search?jql=${encodedJql}&maxResults=50&fields=priority,created`;
+
+  console.log("ticketsByDay - URL:", jiraUrl);
 
   try {
     const response = await fetch(jiraUrl, {
@@ -50,8 +53,6 @@ exports.handler = async (event, context) => {
       },
       agent
     });
-
-    console.log("ticketsByDay - response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -68,24 +69,25 @@ exports.handler = async (event, context) => {
     const data = await response.json();
     console.log("ticketsByDay - total issues returned:", data.issues?.length || 0);
 
-    // Agrupar por "Start Date":
-    // { "YYYY-MM-DD": { p1: X, p2: Y, p3: Z, total: N } }
-    const grouped = {};
+    // Agrupamos por día de creación (YYYY-MM-DD)
+    const grouped = {}; // { "2025-02-26": { p1, p2, p3, total }, ... }
 
-    (data.issues || []).forEach(issue => {
+    for (const issue of data.issues || []) {
       const priorityName = issue.fields.priority?.name || "";
-      const startDateStr = issue.fields["Start Date"];
+      const createdStr = issue.fields.created;
+      if (!createdStr) continue;
 
-      if (!startDateStr) return; // no date => no grouping
+      const dateObj = new Date(createdStr);
+      if (isNaN(dateObj.getTime())) continue;
 
-      const dateObj = new Date(startDateStr);
-      if (isNaN(dateObj.getTime())) return; // invalid date
-
-      const dateKey = dateObj.toISOString().split('T')[0];
+      const dateKey = dateObj.toISOString().split('T')[0]; 
+      // Ej: "2025-02-26"
 
       if (!grouped[dateKey]) {
         grouped[dateKey] = { p1: 0, p2: 0, p3: 0, total: 0 };
       }
+
+      // Checamos prioridad: P1, P2, P3
       if (priorityName.includes("P1")) {
         grouped[dateKey].p1++;
       } else if (priorityName.includes("P2")) {
@@ -94,7 +96,7 @@ exports.handler = async (event, context) => {
         grouped[dateKey].p3++;
       }
       grouped[dateKey].total++;
-    });
+    }
 
     console.log("ticketsByDay - grouped result:", grouped);
 
