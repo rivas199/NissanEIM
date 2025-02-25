@@ -325,18 +325,17 @@
       /* ============ 3) Calendario de tickets (por día) =============== */
       let currentYear = new Date().getFullYear();
       let currentMonth = new Date().getMonth(); // 0=Enero, 1=Febrero, ...
-      let ticketDataByDate = {}; // Aquí se almacenarán los datos { "YYYY-MM-DD": { p1, p2, p3, total } }
+      let ticketDataByDate = {}; // Aquí guardaremos data { "YYYY-MM-DD": { p1, p2, p3, total } }
 
-      // Renderizar calendario completo
       function renderCalendar(year, month) {
         const calendarEl = document.getElementById('calendar');
-        calendarEl.innerHTML = ''; // limpiar
+        calendarEl.innerHTML = ''; // Limpia
 
-        // Actualiza el título Mes/Año
+        // Actualiza título Mes/Año
         const monthYearEl = document.getElementById('monthYear');
         const dateObj = new Date(year, month);
         const monthName = dateObj.toLocaleString('es-ES', { month: 'long' });
-        monthYearEl.textContent = 
+        monthYearEl.textContent =
           monthName.charAt(0).toUpperCase() + monthName.slice(1) + ' ' + year;
 
         // Encabezados de días
@@ -348,19 +347,18 @@
           calendarEl.appendChild(header);
         });
 
-        // Primer día del mes (dónde empieza en la semana)
+        // Determinar primer día de la semana y total días del mes
         const firstDayOfWeek = new Date(year, month, 1).getDay();
-        // Cantidad de días en el mes
         const totalDays = new Date(year, month + 1, 0).getDate();
 
-        // Espacios en blanco antes de que empiece el día 1
+        // Celdas vacías antes del día 1
         for (let i = 0; i < firstDayOfWeek; i++) {
           const emptyCell = document.createElement('div');
           emptyCell.classList.add('day');
           calendarEl.appendChild(emptyCell);
         }
 
-        // Crear celda para cada día real
+        // Celdas para cada día real
         for (let day = 1; day <= totalDays; day++) {
           const cell = document.createElement('div');
           cell.classList.add('day');
@@ -373,7 +371,7 @@
           dateSpan.textContent = day;
           cell.appendChild(dateSpan);
 
-          // Si existen tickets en dateString, los mostramos
+          // Si tenemos data para este día, la mostramos
           if (ticketDataByDate[dateString]) {
             const { p1, p2, p3, total } = ticketDataByDate[dateString];
             const infoDiv = document.createElement('div');
@@ -391,7 +389,6 @@
         }
       }
 
-      // Botones de navegación
       document.getElementById('prevMonth').addEventListener('click', () => {
         if (currentMonth === 0) {
           currentMonth = 11;
@@ -412,7 +409,7 @@
         renderCalendar(currentYear, currentMonth);
       });
 
-      // Llamada para obtener datos de tickets (por día)
+      // Traer datos de ticketsByDay
       async function fetchTicketDataByDay() {
         try {
           const response = await fetch('/.netlify/functions/ticketsByDay');
@@ -420,17 +417,17 @@
             throw new Error(`Error al obtener ticketsByDay: ${response.status}`);
           }
           const data = await response.json();
-          // data se asume: { "YYYY-MM-DD": { p1, p2, p3, total }, ... }
+          // data: { "YYYY-MM-DD": { p1, p2, p3, total }, ... }
           ticketDataByDate = data;
-          renderCalendar(currentYear, currentMonth);
         } catch (error) {
           console.error("Error fetching ticket data:", error);
-          // Si falla, renderizamos calendario vacío (sin tickets)
           ticketDataByDate = {};
-          renderCalendar(currentYear, currentMonth);
         }
+        // Renderizar después de cargar
+        renderCalendar(currentYear, currentMonth);
       }
-      // Invocar la consulta y pintar el calendario
+
+      // Al cargar la página, obtener data y pintar calendario
       fetchTicketDataByDay();
     });
   </script>
