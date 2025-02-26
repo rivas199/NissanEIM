@@ -277,19 +277,8 @@
           lastResponseData = data;
           downloadBtn.style.display = "block";
           
-          if (data && data.eim && data.modelYear && data.price && data.color && data.grade && data.publishedDate) {
-            resultEl.innerHTML = `
-              I found your EIM: ${data.eim} <br>
-              Model Year: ${data.modelYear} <br>
-              Color: ${data.color} <br>
-              Grade: ${data.grade} <br>
-              Published Date: ${data.publishedDate} <br>
-              Price: ${data.price} <br>
-              <br>Please download the JSON to check the full spec.
-            `;
-          } else {
-            resultEl.innerHTML = "Received API response, but some fields are missing. Please download the JSON to check the full spec.";
-          }
+          // Changed message: simple confirmation message on success
+          resultEl.innerHTML = "We have found your EIM check the JSON file";
         } catch (error) {
           console.error("Error during API call:", error);
           resultEl.textContent = 'Error: ' + error.message;
